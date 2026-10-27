@@ -35,6 +35,7 @@ const fYear = (t) => tags(t).year || (t.online && t.online.year) || '';
 const fLabel = (t) => tags(t).label || (t.online && t.online.label) || '';
 const fDur = (t) => (t.analysis && t.analysis.duration) || (t.probe && t.probe.duration) || 0;
 const fmtTime = (s) => { if (s == null || isNaN(s)) return ''; s = Math.max(0, s); return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`; };
+const fmtBpm = (b) => (b % 1 ? b.toFixed(1) : String(b));
 const LOSSLESS = new Set(['flac', 'wav', 'aif', 'aiff', 'alac', 'ape', 'wv']);
 function fFormat(t) {
   const p = t.probe;
@@ -156,7 +157,7 @@ function rowHtml(t) {
 <div><canvas></canvas></div>
 <div class="c-title" title="${esc(t.rel)}">${esc(fTitle(t))}</div>
 <div class="c-artist">${esc(fArtist(t))}</div>
-<div class="c-bpm">${a ? a.bpm.toFixed(a.bpm % 1 ? 1 : 0) : ''}${diff ? `<span class="bpm-tag-diff" title="Tag du fichier : ${tagBpm}">*</span>` : ''}</div>
+<div class="c-bpm${a && a.bpmDetected ? ' bpm-fixed' : ''}"${a && a.bpmDetected ? ` title="Détecté : ${fmtBpm(a.bpmDetected)}"` : ''}>${a ? fmtBpm(a.bpm) : ''}${diff ? `<span class="bpm-tag-diff" title="Tag du fichier : ${tagBpm}">*</span>` : ''}</div>
 <div class="c-key">${a ? `<span class="key" style="background:${keyColor(a.camelot)}">${a.camelot}</span><span class="key-name">${a.key}</span>` : ''}</div>
 <div class="c-energy">${a ? `<span class="energy-bar" style="width:${a.energy * 2.2}px"></span>${a.energy}` : ''}</div>
 <div class="c-lufs">${a && a.lufs != null ? a.lufs.toFixed(1) : ''}</div>
@@ -191,7 +192,7 @@ function renderRows(force) {
       tbody.appendChild(el);
       rowPool.set(i, el);
     }
-    const sig = `${t.id}|${t.status}|${t.onlinePending}|${t.online ? t.online.fetchedAt : 0}|${t.probe ? 1 : 0}`;
+    const sig = `${t.id}|${t.bpmMul}|${t.status}|${t.onlinePending}|${t.online ? t.online.fetchedAt : 0}|${t.probe ? 1 : 0}`;
     if (el._sig !== sig) {
       el._sig = sig;
       el.dataset.id = t.id;
@@ -373,7 +374,9 @@ function renderDeckInfo(t) {
   $('dTitle').textContent = fTitle(t);
   $('dTitle').title = t.path;
   $('dArtist').textContent = [fArtist(t), tg.album || o.album].filter(Boolean).join(' — ');
-  $('dBpm').textContent = a.bpm ? a.bpm.toFixed(a.bpm % 1 ? 1 : 0) : '…';
+  $('dBpm').textContent = a.bpm ? fmtBpm(a.bpm) : '…';
+  $('dBpm').classList.toggle('bpm-fixed', !!a.bpmDetected);
+  $('dBpm').title = a.bpmDetected ? `Corrigé à la main (détecté : ${fmtBpm(a.bpmDetected)})` : '';
   $('dKey').innerHTML = a.camelot ? `<span class="key" style="background:${keyColor(a.camelot)}">${a.camelot}</span> <span class="key-name">${a.key}</span>` : '…';
   $('dEnergy').textContent = a.energy || '…';
   $('dLufs').textContent = a.lufs != null ? a.lufs.toFixed(1) : '…';
@@ -446,6 +449,15 @@ $('zoomWave').addEventListener('wheel', (e) => {
 $('zoom').addEventListener('input', drawDeck);
 $('volume').addEventListener('input', (e) => { audio.volume = +e.target.value; });
 
+// ---------- BPM x2 / ÷2 ----------
+// applies to the selection, or to the track in the deck when nothing is selected
+function fixBpm(factor) {
+  const ids = state.selected.size ? [...state.selected] : state.loaded ? [state.loaded] : [];
+  if (ids.length) api.setBpm(ids, factor);
+}
+$('bpmDouble').addEventListener('click', () => state.loaded && api.setBpm([state.loaded], 2));
+$('bpmHalf').addEventListener('click', () => state.loaded && api.setBpm([state.loaded], 0.5));
+
 // ---------- keyboard ----------
 window.addEventListener('keydown', (e) => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') {
@@ -461,6 +473,8 @@ window.addEventListener('keydown', (e) => {
   else if ((e.metaKey || e.ctrlKey) && e.key === 'f') { e.preventDefault(); $('search').focus(); }
   else if ((e.metaKey || e.ctrlKey) && e.key === 'a') { e.preventDefault(); state.selected = new Set(state.view); renderRows(true); }
   else if (e.key === 'm') $('compatible').click();
+  else if (e.key === '*') fixBpm(2);
+  else if (e.key === '/') { e.preventDefault(); fixBpm(0.5); }
 });
 
 // ---------- filters ----------

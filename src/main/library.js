@@ -146,6 +146,7 @@ class Library extends EventEmitter {
       analysis: valid ? c.analysis || null : null,
       mini: valid ? c.mini || null : null,
       online: c && c.online ? c.online : null, // online data survives file edits
+      bpmMul: (c && c.bpmMul) || 1, // manual x2 / ÷2 correction, survives re-analysis
       error: null,
       busy: false,
     };
@@ -251,7 +252,7 @@ class Library extends EventEmitter {
   }
 
   persist(t) {
-    this.cache.data[t.path] = { size: t.size, mtime: t.mtime, probe: t.probe, analysis: t.analysis, mini: t.mini, online: t.online };
+    this.cache.data[t.path] = { size: t.size, mtime: t.mtime, probe: t.probe, analysis: t.analysis, mini: t.mini, online: t.online, bpmMul: t.bpmMul };
     this.cache.save();
   }
 
@@ -312,9 +313,27 @@ class Library extends EventEmitter {
   }
 
   // ---------- renderer data ----------
+  // factor: 2, 0.5 or 'reset'
+  setBpmMul(ids, factor) {
+    for (const id of ids) {
+      const t = this.tracks.get(id);
+      if (!t) continue;
+      t.bpmMul = factor === 'reset' ? 1 : Math.min(4, Math.max(0.25, t.bpmMul * factor));
+      this.persist(t);
+      this.dirty.add(id);
+    }
+  }
+
+  // analysis with the manual BPM correction applied (what the UI and exports show)
+  effectiveAnalysis(t) {
+    const a = t.analysis;
+    if (!a || t.bpmMul === 1) return a;
+    return { ...a, bpm: Math.round(a.bpm * t.bpmMul * 100) / 100, bpmDetected: a.bpm };
+  }
+
   publicTrack(t) {
     const { busy, error, onlinePending, staleRange, ...rest } = t;
-    return { ...rest, status: error ? 'error' : busy ? 'busy' : t.analysis ? 'done' : 'pending', error, onlinePending: !!onlinePending, staleRange: !!staleRange };
+    return { ...rest, analysis: this.effectiveAnalysis(t), status: error ? 'error' : busy ? 'busy' : t.analysis ? 'done' : 'pending', error, onlinePending: !!onlinePending, staleRange: !!staleRange };
   }
 
   stats() {

@@ -13,6 +13,10 @@ module.exports = function smoke(win, out) {
     })()`);
     console.log('smoke', JSON.stringify(r));
     await wait(1500);
+    if (process.env.CRATESCOPE_SMOKE_JS) {
+      console.log('smoke-js', JSON.stringify(await win.webContents.executeJavaScript(process.env.CRATESCOPE_SMOKE_JS)));
+      await wait(1000);
+    }
     await win.webContents.executeJavaScript(`document.getElementById('audio').currentTime = 60; document.getElementById('btnPlay').click(); true`);
     await wait(1500);
     const img = await win.capturePage();

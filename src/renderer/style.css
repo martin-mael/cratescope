@@ -47,7 +47,7 @@ button { font: inherit; color: inherit; }
 
 /* deck */
 .deck { display: flex; gap: 14px; padding: 12px; background: linear-gradient(#121419, #0f1115); border-bottom: 1px solid var(--line); height: 238px; flex-shrink: 0; }
-.deck-left { width: 420px; display: flex; gap: 12px; flex-shrink: 0; }
+.deck-left { width: 470px; display: flex; gap: 12px; flex-shrink: 0; }
 .cover { width: 128px; height: 128px; border-radius: 8px; background: var(--panel2); position: relative; overflow: hidden; flex-shrink: 0; }
 .cover img { width: 100%; height: 100%; object-fit: cover; display: none; position: relative; z-index: 1; }
 .cover img.ok { display: block; }
@@ -56,7 +56,12 @@ button { font: inherit; color: inherit; }
 .d-title { font-size: 17px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .d-artist { color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .d-stats { display: flex; gap: 6px; margin-top: 2px; }
-.stat { background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; min-width: 62px; }
+.stat { background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; min-width: 62px; white-space: nowrap; }
+.bpm-stat { position: relative; padding-right: 34px; }
+.bpm-fix { position: absolute; right: 3px; top: 3px; bottom: 3px; display: flex; flex-direction: column; gap: 2px; }
+.bpm-fix button { flex: 1; width: 28px; font-size: 10px; line-height: 1; border: 1px solid var(--line); background: var(--bg); color: var(--dim); border-radius: 4px; cursor: pointer; padding: 0; }
+.bpm-fix button:hover { color: var(--text); border-color: var(--accent); }
+.bpm-fixed { color: var(--accent); }
 .stat > span { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: .6px; color: var(--faint); }
 .stat b { white-space: nowrap; font-size: 16px; font-variant-numeric: tabular-nums; }
 .chips { display: flex; flex-wrap: wrap; gap: 4px; max-height: 46px; overflow: hidden; }

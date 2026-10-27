@@ -103,6 +103,7 @@ ipcMain.on('library:focus', (_e, { dir, recursive }) => library.focus(dir, recur
 ipcMain.on('library:reanalyze', (_e, ids) => library.reanalyze(ids));
 ipcMain.on('library:reanalyzeStale', () => library.reanalyzeStale());
 ipcMain.on('library:refetch', (_e, ids) => library.refetchOnline(ids));
+ipcMain.on('library:bpm', (_e, { ids, factor }) => library.setBpmMul(ids, factor));
 
 ipcMain.handle('track:waves', (_e, id) => library.readWaves(id));
 
@@ -143,6 +144,10 @@ ipcMain.on('track:context', (e, ids) => {
     { label: 'Copier le chemin', click: () => clipboard.writeText(tracks.map((t) => t.path).join('\n')) },
     { type: 'separator' },
     { label: tracks.length > 1 ? `Ré-analyser (${tracks.length})` : 'Ré-analyser', click: () => library.reanalyze(tracks.map((t) => t.id)) },
+    { label: 'BPM ×2   ( * )', click: () => library.setBpmMul(tracks.map((t) => t.id), 2) },
+    { label: 'BPM ÷2   ( / )', click: () => library.setBpmMul(tracks.map((t) => t.id), 0.5) },
+    { label: 'BPM détecté (annuler ×2 / ÷2)', enabled: tracks.some((t) => t.bpmMul !== 1), click: () => library.setBpmMul(tracks.map((t) => t.id), 'reset') },
+    { type: 'separator' },
     { label: 'Re-chercher les métadonnées en ligne', click: () => library.refetchOnline(tracks.map((t) => t.id)) },
     { type: 'separator' },
     { label: 'Ouvrir sur Discogs', enabled: !!(one.online && one.online.discogsUrl), click: () => shell.openExternal(one.online.discogsUrl) },
@@ -161,7 +166,7 @@ ipcMain.handle('export', async (_e, { format, ids }) => {
     const q = (v) => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
     const head = ['Path', 'Artist', 'Title', 'BPM', 'Key', 'Camelot', 'Energy', 'LUFS', 'Duration', 'Genre', 'Style', 'Year', 'Label'];
     const rows = tracks.map((t) => {
-      const tg = (t.probe && t.probe.tags) || {}, a = t.analysis || {}, o = t.online || {};
+      const tg = (t.probe && t.probe.tags) || {}, a = library.effectiveAnalysis(t) || {}, o = t.online || {};
       return [t.path, tg.artist || t.parsed.artist, tg.title || t.parsed.title, a.bpm, a.key, a.camelot, a.energy, a.lufs,
         a.duration ? a.duration.toFixed(1) : '', [tg.genre, ...(o.genres || [])].filter(Boolean).join('; '),
         (o.styles || []).join('; '), tg.year || o.year, tg.label || o.label].map(q).join(',');

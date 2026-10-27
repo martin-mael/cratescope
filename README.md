@@ -30,6 +30,7 @@ npm start -- ~/Music/Crate     # ouvre directement un dossier
 - **Mixables** (touche `m`) : n'affiche que les titres compatibles harmoniquement avec le titre chargé (Camelot ±1 / relatif) et à ±6 % de BPM (ou demi/double tempo).
 - Glisser des lignes vers Rekordbox, Ableton, le Finder… ; clic droit : Finder, ré-analyse, re-recherche en ligne, Discogs/MusicBrainz.
 - Export de la vue (ou de la sélection) en playlist M3U8 ou en CSV.
+- BPM à moitié ou doublé ? Boutons **÷2 / ×2** à côté du BPM dans le deck, touches `/` et `*` (sur la sélection), ou clic droit. La correction est gardée même après une ré-analyse ; le BPM corrigé s'affiche en bleu.
 - Un `*` à côté du BPM signale un désaccord avec le tag BPM du fichier.
 
 ## Mesurer la précision
