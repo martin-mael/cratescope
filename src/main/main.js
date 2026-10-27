@@ -49,7 +49,7 @@ function createWindow() {
     return { action: 'deny' };
   });
   win.webContents.on('will-navigate', (e) => e.preventDefault());
-  if (process.env.CRATESCOPE_SMOKE) require('./smoke')(win, process.env.CRATESCOPE_SMOKE);
+  if (process.env.CRATESCOPE_SMOKE && !app.isPackaged) require('./smoke')(win, process.env.CRATESCOPE_SMOKE);
 }
 
 function send(channel, payload) {
@@ -58,6 +58,7 @@ function send(channel, payload) {
 
 app.whenReady().then(() => {
   loadSettings();
+  if (!app.isPackaged && app.dock) app.dock.setIcon(path.join(__dirname, '..', '..', 'build', 'icon.png'));
   library = new Library(app.getPath('userData'), () => settings);
   library.on('update', (u) => send('library:update', u));
   library.on('removed', (id) => send('library:removed', id));

@@ -35,3 +35,12 @@ npm start -- ~/Music/Crate     # ouvre directement un dossier
 ## Mesurer la précision
 
 `npm run eval -- <dossier>` compare l'analyse aux tags BPM/tonalité déjà présents dans les fichiers.
+
+## Construire l'app macOS
+
+```bash
+npm run package       # → dist/CrateScope-darwin-arm64/CrateScope.app (signature ad-hoc)
+npm run install_app   # package + copie dans /Applications
+```
+
+L'icône est générée depuis `build/icon.svg` (→ `icon.png` → `icon.icns`).
