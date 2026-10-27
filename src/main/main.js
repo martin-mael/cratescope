@@ -7,6 +7,18 @@ const { pathToFileURL } = require('url');
 const { Library } = require('./library');
 const { extractCover, transcodeForPlayback } = require('../analysis/ffmpeg');
 
+const isMac = process.platform === 'darwin';
+
+// Packaged builds ship ffmpeg/ffprobe in resources/ffmpeg; workers inherit these env vars.
+if (app.isPackaged) {
+  const exe = process.platform === 'win32' ? '.exe' : '';
+  for (const tool of ['ffmpeg', 'ffprobe']) {
+    const bundled = path.join(process.resourcesPath, 'ffmpeg', tool + exe);
+    const key = `CRATESCOPE_${tool.toUpperCase()}`;
+    if (!process.env[key] && fs.existsSync(bundled)) process.env[key] = bundled;
+  }
+}
+
 const DEFAULTS = {
   minBpm: 88,
   maxBpm: 180,
@@ -34,8 +46,10 @@ function createWindow() {
     minWidth: 1000,
     minHeight: 600,
     backgroundColor: '#0e0f12',
-    titleBarStyle: 'hiddenInset',
-    trafficLightPosition: { x: 14, y: 14 },
+    titleBarStyle: isMac ? 'hiddenInset' : 'hidden',
+    ...(isMac
+      ? { trafficLightPosition: { x: 14, y: 14 } }
+      : { titleBarOverlay: { color: '#15171c', symbolColor: '#e7e9ee', height: 48 } }),
     webPreferences: {
       preload: path.join(__dirname, '..', 'preload.js'),
       contextIsolation: true,
@@ -140,7 +154,7 @@ ipcMain.on('track:context', (e, ids) => {
   if (!tracks.length) return;
   const one = tracks[0];
   Menu.buildFromTemplate([
-    { label: 'Afficher dans le Finder', click: () => shell.showItemInFolder(one.path) },
+    { label: isMac ? 'Afficher dans le Finder' : "Afficher dans l'Explorateur", click: () => shell.showItemInFolder(one.path) },
     { label: 'Copier le chemin', click: () => clipboard.writeText(tracks.map((t) => t.path).join('\n')) },
     { type: 'separator' },
     { label: tracks.length > 1 ? `Ré-analyser (${tracks.length})` : 'Ré-analyser', click: () => library.reanalyze(tracks.map((t) => t.id)) },

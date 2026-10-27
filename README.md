@@ -37,11 +37,17 @@ npm start -- ~/Music/Crate     # ouvre directement un dossier
 
 `npm run eval -- <dossier>` compare l'analyse aux tags BPM/tonalité déjà présents dans les fichiers.
 
-## Construire l'app macOS
+## Builds et releases
 
 ```bash
-npm run package       # → dist/CrateScope-darwin-arm64/CrateScope.app (signature ad-hoc)
-npm run install_app   # package + copie dans /Applications
+npm run package        # macOS Apple Silicon → dist/CrateScope-macos-arm64.zip
+npm run package:mac-x64
+npm run package:win    # Windows x64 (se construit aussi depuis macOS/Linux) → dist/CrateScope-windows-x64.zip
+npm run install_app    # build Apple Silicon + copie dans /Applications
 ```
 
-L'icône est générée depuis `build/icon.svg` (→ `icon.png` → `icon.icns`).
+ffmpeg/ffprobe sont embarqués dans les builds (`scripts/fetch-ffmpeg.sh` → `vendor/`, copiés dans `resources/ffmpeg`). En dev, l'app utilise ffmpeg du PATH / Homebrew.
+
+Chaque push sur `main` déclenche `.github/workflows/release.yml` : builds macOS (arm64 + x64) et Windows, vérification de ffmpeg et de l'analyse sur les binaires embarqués (`scripts/ci-check.js`, y compris sur un runner Windows), puis publication d'une release GitHub `v<version>-build.<n>` avec les trois zips.
+
+Les icônes sont générées depuis `build/icon.svg` (→ `icon.png` → `icon.icns`, et `node scripts/make-ico.js` pour `icon.ico`).

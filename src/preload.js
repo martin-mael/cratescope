@@ -7,7 +7,10 @@ const on = (channel) => (cb) => {
   return () => ipcRenderer.removeListener(channel, h);
 };
 
+window.addEventListener('DOMContentLoaded', () => document.body.classList.add(`platform-${process.platform}`));
+
 contextBridge.exposeInMainWorld('api', {
+  platform: process.platform,
   getSettings: () => ipcRenderer.invoke('settings:get'),
   setSettings: (patch) => ipcRenderer.invoke('settings:set', patch),
   chooseFolder: () => ipcRenderer.invoke('library:choose'),

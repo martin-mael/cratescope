@@ -1,0 +1,104 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build ${{ matrix.label }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-latest, platform: darwin, arch: arm64, label: macOS (Apple Silicon) }
+          - { os: macos-latest, platform: darwin, arch: x64, label: macOS (Intel) }
+          - { os: ubuntu-latest, platform: win32, arch: x64, label: Windows x64 }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Package
+        run: node scripts/package.js ${{ matrix.platform }} ${{ matrix.arch }}
+      - name: Check bundled ffmpeg + analyser
+        if: matrix.platform == 'darwin' && matrix.arch == 'arm64'
+        run: node scripts/ci-check.js dist/CrateScope-darwin-arm64/CrateScope.app/Contents/Resources/ffmpeg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cratescope-${{ matrix.platform }}-${{ matrix.arch }}
+          path: dist/*.zip
+          if-no-files-found: error
+          compression-level: 0
+
+  verify-windows:
+    name: Verify Windows build
+    needs: build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          name: cratescope-win32-x64
+          path: artifact
+      - name: Extract
+        shell: pwsh
+        run: Expand-Archive artifact/CrateScope-windows-x64.zip -DestinationPath extracted
+      - name: Check bundled ffmpeg + analyser
+        run: node scripts/ci-check.js extracted/CrateScope-win32-x64/resources/ffmpeg
+
+  release:
+    name: Publish release
+    needs: [build, verify-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="v${VERSION}-build.${GITHUB_RUN_NUMBER}"
+          SUBJECT=$(git log -1 --format=%s)
+          cat > notes.md <<NOTES
+          **${SUBJECT}** (\`${GITHUB_SHA::7}\`)
+
+          ### Téléchargements
+          | Système | Fichier |
+          |---|---|
+          | macOS Apple Silicon (M1–M4) | \`CrateScope-macos-arm64.zip\` |
+          | macOS Intel | \`CrateScope-macos-x64.zip\` |
+          | Windows 10/11 x64 | \`CrateScope-windows-x64.zip\` |
+
+          ffmpeg est inclus, rien d'autre à installer.
+
+          ### Installation
+          **macOS** — dézippe, glisse \`CrateScope.app\` dans Applications, puis (l'app n'est pas notarisée par Apple) :
+          \`\`\`
+          xattr -dr com.apple.quarantine /Applications/CrateScope.app
+          \`\`\`
+          **Windows** — dézippe le dossier où tu veux et lance \`CrateScope.exe\`. Si SmartScreen s'affiche : « Informations complémentaires » → « Exécuter quand même ».
+          NOTES
+          gh release create "$TAG" artifacts/*.zip \
+            --target "$GITHUB_SHA" \
+            --title "CrateScope ${VERSION} (build ${GITHUB_RUN_NUMBER})" \
+            --notes-file notes.md \
+            --latest

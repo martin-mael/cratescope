@@ -4,9 +4,12 @@ const fs = require('fs');
 const path = require('path');
 const { SR } = require('./dsp');
 
+// Order: explicit env (set by main for the binaries bundled in the Windows build), Homebrew, PATH.
 function findBinary(name) {
+  const exe = process.platform === 'win32' ? `${name}.exe` : name;
   const candidates = [
     process.env[`CRATESCOPE_${name.toUpperCase()}`],
+    path.join(__dirname, '..', '..', 'vendor', `${process.platform}-${process.arch}`, 'ffmpeg', exe),
     `/opt/homebrew/bin/${name}`,
     `/usr/local/bin/${name}`,
     `/usr/bin/${name}`,
@@ -25,7 +28,7 @@ const FFPROBE = findBinary('ffprobe');
 
 function run(bin, args, { maxBuffer = 64 * 1024 * 1024, timeout = 120000 } = {}) {
   return new Promise((resolve, reject) => {
-    const p = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    const p = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
     const out = [];
     let outLen = 0;
     let err = '';

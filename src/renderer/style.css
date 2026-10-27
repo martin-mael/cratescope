@@ -23,6 +23,9 @@ button { font: inherit; color: inherit; }
 /* top bar */
 .topbar { -webkit-app-region: drag; height: 48px; display: flex; align-items: center; gap: 8px; padding: 0 12px 0 84px; background: var(--panel); border-bottom: 1px solid var(--line); flex-shrink: 0; }
 .topbar > * { -webkit-app-region: no-drag; }
+/* Windows / Linux: no traffic lights on the left, caption buttons overlay on the right */
+body:not(.platform-darwin) .topbar { padding-left: 14px; padding-right: 150px; }
+body:not(.platform-darwin) .input.search { width: 200px; }
 .topbar .spacer, .topbar .brand, .topbar .root-name { -webkit-app-region: drag; }
 .brand { font-size: 15px; letter-spacing: .3px; color: var(--dim); margin-right: 6px; }
 .brand b { color: var(--accent); }

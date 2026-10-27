@@ -7,8 +7,10 @@
   "scripts": {
     "start": "electron .",
     "eval": "node scripts/eval.js",
-    "package": "electron-packager . CrateScope --platform=darwin --arch=arm64 --icon=build/icon.icns --out=dist --overwrite --no-asar --app-bundle-id=com.maelmartin.cratescope --ignore=^/dist --ignore=^/build --ignore=^/scripts --ignore=smoke.js && codesign --force --deep -s - dist/CrateScope-darwin-arm64/CrateScope.app",
-    "install_app": "npm run package && rm -rf /Applications/CrateScope.app && cp -R dist/CrateScope-darwin-arm64/CrateScope.app /Applications/"
+    "package": "node scripts/package.js darwin arm64",
+    "install_app": "npm run package && rm -rf /Applications/CrateScope.app && cp -R dist/CrateScope-darwin-arm64/CrateScope.app /Applications/",
+    "package:mac-x64": "node scripts/package.js darwin x64",
+    "package:win": "node scripts/package.js win32 x64"
   },
   "license": "MIT",
   "devDependencies": {
