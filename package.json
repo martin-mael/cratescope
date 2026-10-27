@@ -1,0 +1,15 @@
+{
+  "name": "cratescope",
+  "productName": "CrateScope",
+  "version": "0.1.0",
+  "description": "Analyse BPM, key, waveform and metadata of a music folder (Rekordbox-style)",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "eval": "node scripts/eval.js"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^45.1.0"
+  }
+}

@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' file: data: https:; media-src file:;" />
+  <title>CrateScope</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">Crate<b>Scope</b></div>
+    <button id="btnOpen" class="btn primary">Ouvrir un dossier…</button>
+    <div id="rootName" class="root-name"></div>
+    <div class="spacer"></div>
+    <input id="search" class="input search" type="search" placeholder="Rechercher titre, artiste, genre, label…" />
+    <div class="bpm-filter">
+      <input id="bpmMin" class="input num" type="number" placeholder="BPM min" />
+      <span>–</span>
+      <input id="bpmMax" class="input num" type="number" placeholder="max" />
+    </div>
+    <select id="keyFilter" class="input"><option value="">Toutes tonalités</option></select>
+    <label class="toggle" title="Inclure les sous-dossiers"><input id="recursive" type="checkbox" checked /> Sous-dossiers</label>
+    <label class="toggle" title="Ne montrer que les titres mixables avec le titre chargé (tonalité compatible et BPM ±6 %)"><input id="compatible" type="checkbox" /> Mixables</label>
+    <div class="menu-wrap">
+      <button id="btnExport" class="btn">Exporter ▾</button>
+      <div id="exportMenu" class="menu hidden">
+        <button data-fmt="m3u">Playlist M3U8 (vue actuelle)</button>
+        <button data-fmt="csv">Tableau CSV (vue actuelle)</button>
+      </div>
+    </div>
+    <button id="btnSettings" class="btn icon" title="Réglages">⚙︎</button>
+  </header>
+
+  <section id="deck" class="deck empty">
+    <div class="deck-left">
+      <div class="cover"><img id="cover" alt="" /><div class="cover-ph">♪</div></div>
+      <div class="deck-info">
+        <div id="dTitle" class="d-title">Aucun titre chargé</div>
+        <div id="dArtist" class="d-artist">Ouvre un dossier puis sélectionne un morceau</div>
+        <div class="d-stats">
+          <div class="stat"><span>BPM</span><b id="dBpm">–</b></div>
+          <div class="stat"><span>Tonalité</span><b id="dKey">–</b></div>
+          <div class="stat"><span>Énergie</span><b id="dEnergy">–</b></div>
+          <div class="stat"><span>LUFS</span><b id="dLufs">–</b></div>
+        </div>
+        <div id="dChips" class="chips"></div>
+        <div id="dMeta" class="d-meta"></div>
+      </div>
+    </div>
+    <div class="deck-right">
+      <canvas id="zoomWave" class="zoom-wave"></canvas>
+      <canvas id="overWave" class="over-wave"></canvas>
+      <div class="transport">
+        <button id="btnPlay" class="btn play" title="Lecture / pause (espace)">▶</button>
+        <span id="tPos" class="time">0:00</span>
+        <span class="time dim">/</span>
+        <span id="tDur" class="time dim">0:00</span>
+        <div class="spacer"></div>
+        <label class="zoom-ctl">Zoom <input id="zoom" type="range" min="2" max="30" value="8" /></label>
+        <label class="zoom-ctl">Vol <input id="volume" type="range" min="0" max="1" step="0.01" value="0.9" /></label>
+      </div>
+    </div>
+  </section>
+
+  <main class="main">
+    <aside class="sidebar">
+      <div class="side-head">Dossiers</div>
+      <div id="tree" class="tree"></div>
+    </aside>
+    <section class="list">
+      <div id="thead" class="row head"></div>
+      <div id="tbody" class="tbody"><div id="spacer" class="tspacer"></div></div>
+      <div id="emptyState" class="empty-state">
+        <div class="big">Ouvre un dossier de musique</div>
+        <div>MP3, WAV, FLAC, AIFF, OGG, OPUS, M4A… Les sous-dossiers sont scannés et analysés en arrière-plan (BPM, tonalité, waveform, loudness).</div>
+        <button class="btn primary" id="btnOpen2">Ouvrir un dossier…</button>
+      </div>
+    </section>
+  </main>
+
+  <footer class="statusbar">
+    <div id="status">Prêt</div>
+    <div class="progress"><div id="progressBar"></div></div>
+    <div id="statusRight"></div>
+  </footer>
+
+  <dialog id="settingsDlg" class="dialog">
+    <form method="dialog">
+      <h2>Réglages</h2>
+      <fieldset>
+        <legend>Analyse</legend>
+        <label>Plage de BPM
+          <span class="row-inline"><input id="sMin" class="input num" type="number" min="40" max="250" /> – <input id="sMax" class="input num" type="number" min="40" max="300" /></span>
+        </label>
+        <p class="hint">Les tempos détectés sont ramenés dans cette plage (×2 / ÷2). 88–180 convient à la plupart des styles (house, techno, breaks, jungle, D&B). Pour du hip-hop, mets 70–140.</p>
+        <label>Analyses en parallèle <input id="sConc" class="input num" type="number" min="1" max="16" /></label>
+        <p class="hint">Pris en compte au prochain lancement.</p>
+        <button type="button" id="btnStale" class="btn">Ré-analyser les titres faits avec une autre plage</button>
+      </fieldset>
+      <fieldset>
+        <legend>Métadonnées en ligne</legend>
+        <label class="toggle"><input id="sAuto" type="checkbox" /> Rechercher automatiquement genre / style / label</label>
+        <label class="toggle"><input id="sMb" type="checkbox" /> MusicBrainz (gratuit, sans clé)</label>
+        <label>Token Discogs (genre + style très précis)
+          <input id="sDiscogs" class="input wide" type="password" placeholder="Colle ton token personnel" />
+        </label>
+        <p class="hint">Crée un token gratuit sur <a href="#" id="discogsLink">discogs.com/settings/developers</a> → « Generate new token ».</p>
+      </fieldset>
+      <div class="dlg-actions">
+        <button value="cancel" class="btn">Annuler</button>
+        <button value="ok" id="sSave" class="btn primary">Enregistrer</button>
+      </div>
+    </form>
+  </dialog>
+
+  <audio id="audio" preload="auto"></audio>
+  <script src="../shared/keys.js"></script>
+  <script src="waveform.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
