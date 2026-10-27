@@ -2,7 +2,7 @@
 # Fetches ffmpeg + ffprobe for a target into vendor/<platform>-<arch>/ffmpeg
 # (shipped inside the packaged app as resources/ffmpeg).
 #   win32-x64     : LGPL shared build from BtbN/FFmpeg-Builds
-#   darwin-arm64/x64 : static builds from the @ffmpeg-installer / @ffprobe-installer npm packages
+#   darwin-arm64/x64 : static builds from ffmpeg.martin-riedl.de
 set -e
 PLATFORM="$1"; ARCH="$2"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -23,10 +23,16 @@ case "$PLATFORM" in
     [ -n "$LIC" ] && cp "$LIC" "$DEST/LICENSE-ffmpeg.txt"
     ;;
   darwin)
+    # static 9.0.2 builds from ffmpeg.martin-riedl.de
+    case "$ARCH" in
+      arm64) BASE="https://ffmpeg.martin-riedl.de/download/macos/arm64/1789931890_9.0.2" ;;
+      x64)   BASE="https://ffmpeg.martin-riedl.de/download/macos/amd64/1789931006_9.0.2" ;;
+      *) echo "unsupported arch $ARCH"; exit 1 ;;
+    esac
     for tool in ffmpeg ffprobe; do
-      (cd "$TMP" && npm pack "@$tool-installer/darwin-$ARCH" --silent >/dev/null)
-      mkdir -p "$TMP/$tool" && tar xzf "$TMP"/*"$tool"-installer-darwin-"$ARCH"-*.tgz -C "$TMP/$tool"
-      cp "$TMP/$tool/package/$tool" "$DEST/$tool"
+      curl -fsSL -o "$TMP/$tool.zip" "$BASE/$tool.zip"
+      unzip -q -o "$TMP/$tool.zip" -d "$TMP/$tool"
+      cp "$(find "$TMP/$tool" -type f -name "$tool" | head -1)" "$DEST/$tool"
       chmod +x "$DEST/$tool"
     done
     ;;
