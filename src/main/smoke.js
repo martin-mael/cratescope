@@ -13,6 +13,7 @@ module.exports = function smoke(win, out) {
     })()`);
     console.log('smoke', JSON.stringify(r));
     await wait(1500);
+    if (process.env.CRATESCOPE_SMOKE_MAIN) console.log('smoke-main', JSON.stringify(await require(process.env.CRATESCOPE_SMOKE_MAIN)(win)));
     if (process.env.CRATESCOPE_SMOKE_JS) {
       console.log('smoke-js', JSON.stringify(await win.webContents.executeJavaScript(process.env.CRATESCOPE_SMOKE_JS)));
       await wait(1000);

@@ -12,6 +12,7 @@ const state = {
   sort: { key: 'title', dir: 1 },
   selected: new Set(),
   anchor: null,        // last clicked id (shift-select)
+  cursor: null,        // moving end of a shift selection
   loaded: null,        // id in the deck
   waves: null,         // { overview, detail } of loaded track
   settings: {},
@@ -288,30 +289,41 @@ function dragImage(ids) {
   return c.toDataURL('image/png');
 }
 
+// anchor = where a shift range starts, cursor = its moving end (shift + arrows)
+function rangeAnchor() {
+  for (const id of [state.anchor, state.loaded]) if (id && state.view.includes(id)) return id;
+  return null;
+}
+function selectRange(id) {
+  const a = state.view.indexOf(state.anchor), b = state.view.indexOf(id);
+  state.selected = new Set(state.view.slice(Math.min(a, b), Math.max(a, b) + 1));
+  state.cursor = id;
+}
+
 function select(id, e, { load = true } = {}) {
-  if (e.shiftKey && state.anchor) {
-    const a = state.view.indexOf(state.anchor), b = state.view.indexOf(id);
-    if (a >= 0 && b >= 0) {
-      state.selected = new Set(state.view.slice(Math.min(a, b), Math.max(a, b) + 1));
-    }
+  if (e.shiftKey && rangeAnchor()) {
+    state.anchor = rangeAnchor();
+    selectRange(id);
   } else if (e.metaKey || e.ctrlKey) {
     if (state.selected.has(id)) state.selected.delete(id); else state.selected.add(id);
-    state.anchor = id;
+    state.anchor = state.cursor = id;
   } else {
     state.selected = new Set([id]);
-    state.anchor = id;
+    state.anchor = state.cursor = id;
     // browsing: single click loads into the deck, keeps playing if we were playing
     if (load) loadTrack(id, { play: !audio.paused });
   }
   renderRows(true);
 }
 
-function moveSelection(delta) {
+// shift extends the selection from the anchor without loading the track
+function moveSelection(delta, extend = false) {
   if (!state.view.length) return;
-  let i = state.view.indexOf(state.anchor);
+  const from = extend && rangeAnchor() ? (state.view.includes(state.cursor) ? state.cursor : rangeAnchor()) : state.anchor;
+  let i = state.view.indexOf(from);
   i = i < 0 ? 0 : Math.max(0, Math.min(state.view.length - 1, i + delta));
   const id = state.view[i];
-  select(id, {});
+  if (extend && rangeAnchor()) { state.anchor = rangeAnchor(); selectRange(id); renderRows(true); } else select(id, {});
   const y = i * ROW_H;
   if (y < tbody.scrollTop) tbody.scrollTop = y;
   else if (y + ROW_H > tbody.scrollTop + tbody.clientHeight) tbody.scrollTop = y + ROW_H - tbody.clientHeight;
@@ -750,8 +762,8 @@ window.addEventListener('keydown', (e) => {
     return;
   }
   if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
-  else if (e.key === 'ArrowDown') { e.preventDefault(); moveSelection(1); }
-  else if (e.key === 'ArrowUp') { e.preventDefault(); moveSelection(-1); }
+  else if (e.key === 'ArrowDown') { e.preventDefault(); moveSelection(1, e.shiftKey); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); moveSelection(-1, e.shiftKey); }
   else if (e.key === 'ArrowRight' && audio.duration) audio.currentTime = Math.min(audio.duration, audio.currentTime + (e.shiftKey ? 30 : 8));
   else if (e.key === 'ArrowLeft' && audio.duration) audio.currentTime = Math.max(0, audio.currentTime - (e.shiftKey ? 30 : 8));
   else if (e.key === 'Enter' && state.anchor) loadTrack(state.anchor, { play: true });
