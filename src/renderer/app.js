@@ -224,7 +224,7 @@ tbody.addEventListener('dblclick', (e) => { const id = rowFromEvent(e); if (id) 
 tbody.addEventListener('contextmenu', (e) => {
   const id = rowFromEvent(e);
   if (!id) return;
-  if (!state.selected.has(id)) select(id, {});
+  if (!state.selected.has(id)) select(id, {}, { load: false }); // right click selects, never loads
   api.contextMenu([...state.selected]);
 });
 tbody.addEventListener('dragstart', (e) => {
@@ -235,7 +235,7 @@ tbody.addEventListener('dragstart', (e) => {
   api.startDrag(ids);
 });
 
-function select(id, e) {
+function select(id, e, { load = true } = {}) {
   if (e.shiftKey && state.anchor) {
     const a = state.view.indexOf(state.anchor), b = state.view.indexOf(id);
     if (a >= 0 && b >= 0) {
@@ -248,7 +248,7 @@ function select(id, e) {
     state.selected = new Set([id]);
     state.anchor = id;
     // browsing: single click loads into the deck, keeps playing if we were playing
-    loadTrack(id, { play: !audio.paused });
+    if (load) loadTrack(id, { play: !audio.paused });
   }
   renderRows(true);
 }
