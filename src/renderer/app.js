@@ -229,12 +229,14 @@ function rowFromEvent(e) { const r = e.target.closest('.trow'); return r ? r.dat
 // Pressing a row that is part of a multi-selection keeps the selection so it can be dragged as a
 // whole; the click only narrows it down on release (Finder behaviour).
 let pendingClick = null;
+let ctrlClick = false; // macOS turns Ctrl+click into a context menu too: here it only toggles the selection
 function rowClick(id, e, frac) {
   select(id, e);
   if (frac != null) loadTrack(id, { play: true, at: frac }); // mini waveform: load and play from that point
 }
 tbody.addEventListener('mousedown', (e) => {
   const id = rowFromEvent(e);
+  ctrlClick = e.button === 0 && e.ctrlKey; // reset by any other press (right click, Windows Ctrl+click)
   if (!id || e.button !== 0) return;
   let frac = null;
   if (e.target.tagName === 'CANVAS') {
@@ -255,6 +257,7 @@ window.addEventListener('mouseup', () => {
 tbody.addEventListener('dblclick', (e) => { const id = rowFromEvent(e); if (id) loadTrack(id, { play: true }); });
 tbody.addEventListener('contextmenu', (e) => {
   const id = rowFromEvent(e);
+  if (ctrlClick) { ctrlClick = false; e.preventDefault(); return; }
   if (!id) return;
   if (!state.selected.has(id)) select(id, {}, { load: false }); // right click selects, never loads
   api.contextMenu([...state.selected], state.playlist);
