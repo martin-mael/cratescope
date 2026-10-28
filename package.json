@@ -1,7 +1,7 @@
 {
   "name": "cratescope",
   "productName": "CrateScope",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Analyse BPM, key, waveform and metadata of a music folder (Rekordbox-style)",
   "main": "src/main/main.js",
   "scripts": {
