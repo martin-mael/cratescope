@@ -26,7 +26,7 @@ contextBridge.exposeInMainWorld('api', {
   playable: (id) => ipcRenderer.invoke('track:playable', id),
   startDrag: (ids) => ipcRenderer.send('track:drag', ids),
   contextMenu: (ids) => ipcRenderer.send('track:context', ids),
-  exportList: (format, ids) => ipcRenderer.invoke('export', { format, ids }),
+  exportList: (format, ids, name) => ipcRenderer.invoke('export', { format, ids, name }),
   openExternal: (url) => ipcRenderer.send('open:external', url),
   onUpdate: on('library:update'),
   onRemoved: on('library:removed'),

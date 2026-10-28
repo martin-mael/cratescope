@@ -602,7 +602,15 @@ $('exportMenu').addEventListener('click', (e) => {
   const b = e.target.closest('[data-fmt]');
   if (!b) return;
   const ids = state.selected.size > 1 ? state.view.filter((id) => state.selected.has(id)) : state.view;
-  api.exportList(b.dataset.fmt, ids);
+  // playlist named after the folder being viewed
+  const name = 'CrateScope · ' + ((state.folder || state.root || '').split(SEP).pop() || 'export');
+  api.exportList(b.dataset.fmt, ids, name).then((res) => {
+    if (!res || !res.count && !res.skipped) return;
+    let msg = `rekordbox XML : ${res.count} titre(s) exporté(s)`;
+    if (res.skipped.length) msg += ` · ${res.skipped.length} ignoré(s) (format non lu par rekordbox ou pas encore analysé)`;
+    $('statusRight').textContent = msg;
+    $('statusRight').title = res.skipped.join('\n');
+  });
 });
 
 // ---------- library ----------

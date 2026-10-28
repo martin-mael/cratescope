@@ -29,7 +29,18 @@ npm start -- ~/Music/Crate     # ouvre directement un dossier
 - Espace lecture/pause, ↑/↓ titre suivant/précédent, ←/→ avance de 8 s (Maj : 30 s), molette sur la waveform = zoom, glisser = scratch.
 - **Mixables** (touche `m`) : n'affiche que les titres compatibles harmoniquement avec le titre chargé (Camelot ±1 / relatif) et à ±6 % de BPM (ou demi/double tempo).
 - Glisser des lignes vers Rekordbox, Ableton, le Finder… ; clic droit : Finder, ré-analyse, re-recherche en ligne, Discogs/MusicBrainz.
-- Export de la vue (ou de la sélection) en playlist M3U8 ou en CSV.
+- Export de la vue (ou de la sélection) en playlist M3U8, en CSV ou en **rekordbox XML**.
+
+## Envoyer vers rekordbox
+
+« Exporter » → « rekordbox XML » crée un fichier contenant, pour chaque titre : BPM et grille (avec la position du 1er temps de mesure), tonalité, genre / styles / label / année, et les drops / breaks en memory cues. Tes corrections manuelles (BPM, calage) sont incluses. Les fichiers audio ne sont pas modifiés. Les formats que rekordbox ne lit pas (OGG, Opus, WMA…) sont ignorés.
+
+Dans rekordbox :
+1. Préférences → Avancé → Base de données → « rekordbox xml » : choisis le fichier exporté, et active l'affichage de « rekordbox xml » dans l'arborescence (Préférences → Vue → Mise en page).
+2. Dans l'arborescence, ouvre « rekordbox xml » → « Playlists » → « CrateScope · <dossier> », sélectionne les titres et fais clic droit → « Importer dans la collection » (ou importe la playlist entière).
+3. Pour que rekordbox ne recalcule pas BPM et grille par-dessus, désactive l'analyse automatique du BPM avant l'import (Préférences → Analyse). Fais un essai sur quelques titres avant toute la collection.
+
+La tonalité est exportée en notation classique (Am, F#m, Eb…) ; la notation Camelot est mise en tête des commentaires.
 - **Grille** : le BPM est affiné par suivi des temps et régression sur tout le morceau (précision ~5 ms), le 1er temps des mesures est déduit des changements de section, les drops / breaks sont repérés (marqueurs DROP / BREAK, ligne jaune toutes les 16 mesures à partir du drop). Un avertissement s'affiche si le tempo varie (vinyle, live) ou si le 1er temps est incertain.
 - **Corriger la grille** (barre « Grille » du deck) : `⇤ 1` / `1 ⇥` décalent le 1er temps de la mesure d'un temps (`[` `]`), `‹` `›` décalent la grille de 5 ms (Alt : 1 ms, touches `,` `.`), « 1 ici » fait du temps le plus proche de la tête de lecture un 1er temps (`G`), « Caler ici » cale la grille exactement sur la tête de lecture (`⇧G`), « Auto » revient à la détection. « ♩ Clic » (`C`) joue un métronome sur la grille pour vérifier à l'oreille.
 - **BPM manuel** : clique sur le BPM du deck pour le saisir. La grille pivote autour du drop principal, là où elle compte le plus.

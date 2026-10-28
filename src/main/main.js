@@ -5,6 +5,7 @@ const path = require('path');
 const os = require('os');
 const { pathToFileURL } = require('url');
 const { Library } = require('./library');
+const { buildXml } = require('./rekordbox');
 const { extractCover, transcodeForPlayback } = require('../analysis/ffmpeg');
 
 const isMac = process.platform === 'darwin';
@@ -170,8 +171,16 @@ ipcMain.on('track:context', (e, ids) => {
   ]).popup({ window: BrowserWindow.fromWebContents(e.sender) });
 });
 
-ipcMain.handle('export', async (_e, { format, ids }) => {
+ipcMain.handle('export', async (_e, { format, ids, name }) => {
   const tracks = ids.map((id) => library.get(id)).filter(Boolean);
+  if (format === 'rekordbox') {
+    const r = await dialog.showSaveDialog(win, { defaultPath: 'cratescope-rekordbox.xml', filters: [{ name: 'rekordbox XML', extensions: ['xml'] }] });
+    if (r.canceled || !r.filePath) return null;
+    const res = buildXml(tracks.map((t) => ({ ...t, analysis: library.effectiveAnalysis(t) })), { playlistName: name || 'CrateScope' });
+    fs.writeFileSync(r.filePath, res.xml);
+    shell.showItemInFolder(r.filePath);
+    return { count: res.count, skipped: res.skipped.map((t) => t.name) };
+  }
   const r = await dialog.showSaveDialog(win, {
     defaultPath: format === 'csv' ? 'cratescope.csv' : 'cratescope.m3u8',
     filters: format === 'csv' ? [{ name: 'CSV', extensions: ['csv'] }] : [{ name: 'Playlist', extensions: ['m3u8'] }],
