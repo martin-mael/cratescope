@@ -43,6 +43,7 @@ body:not(.platform-darwin) .input.search { width: 200px; }
 .bpm-filter { display: flex; align-items: center; gap: 4px; color: var(--faint); }
 .toggle { display: flex; align-items: center; gap: 5px; color: var(--dim); cursor: pointer; white-space: nowrap; }
 .toggle input { accent-color: var(--accent); }
+.toggle.off { opacity: .4; }
 .menu-wrap { position: relative; }
 .menu { position: absolute; right: 0; top: 34px; background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 4px; z-index: 20; min-width: 220px; box-shadow: 0 10px 30px rgba(0,0,0,.5); }
 .menu button { display: block; width: 100%; text-align: left; background: none; border: 0; padding: 7px 10px; border-radius: 5px; cursor: pointer; }

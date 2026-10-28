@@ -41,6 +41,7 @@ Les playlists (en bas de la barre latérale) appartiennent à l'app, pas au doss
 - Ordre : celui d'ajout ; cliquer sur une colonne trie la vue, re-cliquer sur la playlist revient à son ordre (c'est cet ordre qui est exporté).
 - Export : clic droit sur une playlist (rekordbox XML ou M3U8), ou « Exporter » › « toutes les playlists » (un seul XML contenant toutes les playlists, ou un M3U8 par playlist).
 - Un ⚠ indique des fichiers introuvables (déplacés ou supprimés).
+- **Hors playlist** (touche `p`) : n'affiche que les titres du dossier qui ne sont encore dans aucune playlist, pratique pour trier une bibliothèque au fur et à mesure.
 
 ## Envoyer vers rekordbox
 

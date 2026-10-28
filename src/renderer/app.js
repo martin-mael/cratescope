@@ -115,9 +115,12 @@ function computeView() {
   const refA = ref && ref.analysis;
   const out = [];
   const pl = currentPlaylist();
+  // "Hors playlist": tracks no playlist contains yet (meaningless inside a playlist)
+  const listed = !pl && $('noPlaylist').checked ? new Set(state.playlists.flatMap((p) => p.ids)) : null;
   const source = pl ? pl.ids.map((id) => state.tracks.get(id)).filter(Boolean) : state.tracks.values();
   for (const t of source) {
     if (!pl && !inFolder(t)) continue;
+    if (listed && listed.has(t.id)) continue;
     const a = t.analysis;
     if (!isNaN(bMin) && (!a || a.bpm < bMin)) continue;
     if (!isNaN(bMax) && (!a || a.bpm > bMax)) continue;
@@ -411,6 +414,7 @@ function renderPlaylists() {
 
 function showPlaylist(id) {
   state.playlist = id;
+  $('noPlaylist').parentElement.classList.toggle('off', !!id); // no effect inside a playlist
   if (id) state.sort = { key: 'pos', dir: 1 };
   else if (state.sort.key === 'pos') state.sort = { key: 'title', dir: 1 };
   state.selected.clear();
@@ -787,6 +791,7 @@ window.addEventListener('keydown', (e) => {
   else if ((e.metaKey || e.ctrlKey) && e.key === 'f') { e.preventDefault(); $('search').focus(); }
   else if ((e.metaKey || e.ctrlKey) && e.key === 'a') { e.preventDefault(); state.selected = new Set(state.view); renderRows(true); }
   else if (e.key === 'm') $('compatible').click();
+  else if (e.key === 'p') $('noPlaylist').click();
   else if (e.key === '*') fixBpm(2);
   else if (e.key === 'c') toggleMetro();
   else if (e.key === '[') grid.shiftBar(-1);
@@ -803,6 +808,7 @@ window.addEventListener('keydown', (e) => {
 ['search', 'bpmMin', 'bpmMax', 'keyFilter'].forEach((id) => $(id).addEventListener('input', invalidate));
 $('recursive').addEventListener('change', () => { api.focus(state.folder, $('recursive').checked); invalidate(); });
 $('compatible').addEventListener('change', invalidate);
+$('noPlaylist').addEventListener('change', invalidate);
 (function fillKeys() {
   const opts = [];
   for (let n = 1; n <= 12; n++) for (const l of ['A', 'B']) opts.push(`${n}${l}`);
