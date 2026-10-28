@@ -60,7 +60,7 @@ jobs:
           path: artifact
       - name: Extract
         shell: pwsh
-        run: Expand-Archive artifact/CrateScope-windows-x64.zip -DestinationPath extracted
+        run: Expand-Archive (Get-ChildItem artifact/*.zip).FullName -DestinationPath extracted
       - name: Check bundled ffmpeg + analyser
         run: node scripts/ci-check.js extracted/CrateScope-win32-x64/resources/ffmpeg
 
@@ -80,6 +80,7 @@ jobs:
         run: |
           VERSION=$(node -p "require('./package.json').version")
           TAG="v${VERSION}-build.${GITHUB_RUN_NUMBER}"
+          NAME="CrateScope-${VERSION}-build.${GITHUB_RUN_NUMBER}"
           SUBJECT=$(git log -1 --format=%s)
           cat > notes.md <<NOTES
           **${SUBJECT}** (\`${GITHUB_SHA::7}\`)
@@ -87,9 +88,9 @@ jobs:
           ### Téléchargements
           | Système | Fichier |
           |---|---|
-          | macOS Apple Silicon (M1–M4) | \`CrateScope-macos-arm64.zip\` |
-          | macOS Intel | \`CrateScope-macos-x64.zip\` |
-          | Windows 10/11 x64 | \`CrateScope-windows-x64.zip\` |
+          | macOS Apple Silicon (M1–M4) | \`${NAME}-macos-arm64.zip\` |
+          | macOS Intel | \`${NAME}-macos-x64.zip\` |
+          | Windows 10/11 x64 | \`${NAME}-windows-x64.zip\` |
 
           ffmpeg est inclus, rien d'autre à installer.
 

@@ -28,7 +28,9 @@ run('npx', ['electron-packager', '.', 'CrateScope',
 
 const out = path.join(dist, `CrateScope-${platform}-${arch}`);
 const label = platform === 'darwin' ? 'macos' : 'windows';
-const zip = path.join(dist, `CrateScope-${label}-${arch}.zip`);
+// version in the file name, plus the CI build number when built by the release workflow
+const version = require('../package.json').version + (process.env.GITHUB_RUN_NUMBER ? `-build.${process.env.GITHUB_RUN_NUMBER}` : '');
+const zip = path.join(dist, `CrateScope-${version}-${label}-${arch}.zip`);
 fs.rmSync(zip, { force: true });
 if (platform === 'darwin') {
   const app = path.join(out, 'CrateScope.app');
