@@ -108,6 +108,22 @@ body:not(.platform-darwin) .input.search { width: 200px; }
 .node .ct { font-size: 10.5px; color: var(--faint); font-variant-numeric: tabular-nums; }
 .node .kids { padding-left: 12px; }
 .node.closed > .kids { display: none; }
+.pl-head { display: flex; align-items: center; border-top: 1px solid var(--line); }
+.pl-add { margin-left: auto; background: none; border: 0; color: var(--dim); font-size: 14px; line-height: 1; cursor: pointer; padding: 0 2px; }
+.pl-add:hover { color: var(--accent); }
+.pl-list { max-height: 38%; min-height: 64px; overflow: auto; padding: 4px 0 10px; }
+.pl { display: flex; align-items: center; gap: 6px; padding: 4px 10px; margin: 0 4px; border-radius: 4px; cursor: pointer; color: var(--dim); white-space: nowrap; border: 1px solid transparent; }
+.pl:hover { background: #1c2027; color: var(--text); }
+.pl.active { background: var(--sel); color: #fff; }
+.pl.drop { border-color: var(--accent); background: #16303f; }
+.pl .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.pl .ct { font-size: 10.5px; color: var(--faint); font-variant-numeric: tabular-nums; }
+.pl .miss { color: var(--accent2); }
+.pl-empty { padding: 6px 14px; font-size: 11.5px; color: var(--faint); }
+.list.drop .tbody { box-shadow: inset 0 0 0 2px var(--accent); }
+.menu-sep { height: 1px; background: var(--line); margin: 4px 6px; }
+.dialog.small { width: 380px; }
+.dialog.small .input.wide { margin: 0 0 14px; }
 
 .list { flex: 1; display: flex; flex-direction: column; min-width: 0; position: relative; }
 .row { display: grid; grid-template-columns: var(--cols); align-items: center; height: var(--row); padding: 0 8px; gap: 8px; }

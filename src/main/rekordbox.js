@@ -71,11 +71,14 @@ const location = (p) => pathToFileURL(p).href.replace(/^file:\/\/\//, 'file://lo
 
 // tracks: [{ path, ext, size, name, tags, parsed, online, probe, analysis (with manual edits applied) }]
 // offsets: Map path -> seconds to add to the grid (see mp3Offsets)
-function buildXml(tracks, { playlistName = 'CrateScope', today = new Date(), offsets = new Map() } = {}) {
+// playlists: [{ name, paths }] (default: one playlist with every track, in order)
+function buildXml(tracks, { playlistName = 'CrateScope', playlists = null, today = new Date(), offsets = new Map() } = {}) {
   const date = today.toISOString().slice(0, 10);
   const entries = [];
   const skipped = [];
+  const idOf = new Map(); // path -> TrackID
   for (const t of tracks) {
+    if (idOf.has(t.path)) continue;
     const a = t.analysis;
     const kind = KIND[t.ext];
     if (!kind || !a || !a.bpm) { skipped.push(t); continue; }
@@ -86,6 +89,7 @@ function buildXml(tracks, { playlistName = 'CrateScope', today = new Date(), off
     // beat number in the bar (1-4) of the first grid beat
     const battito = ((Math.round((a.beatOffset - a.downbeat) / beat) % 4) + 4) % 4 + 1;
     const id = entries.length + 1;
+    idOf.set(t.path, id);
     entries.push({
       id,
       xml: `    <TRACK ${attrs({
@@ -120,6 +124,8 @@ function buildXml(tracks, { playlistName = 'CrateScope', today = new Date(), off
     </TRACK>`,
     });
   }
+  const lists = (playlists || [{ name: playlistName, paths: tracks.map((t) => t.path) }])
+    .map((p) => ({ name: p.name, ids: p.paths.map((x) => idOf.get(x)).filter(Boolean) }));
   const out = `<?xml version="1.0" encoding="UTF-8"?>
 <DJ_PLAYLISTS Version="1.0.0">
   <PRODUCT Name="CrateScope" Version="${xml(require('../../package.json').version)}" Company="CrateScope"/>
@@ -127,10 +133,10 @@ function buildXml(tracks, { playlistName = 'CrateScope', today = new Date(), off
 ${entries.map((e) => e.xml).join('\n')}
   </COLLECTION>
   <PLAYLISTS>
-    <NODE Type="0" Name="ROOT" Count="1">
-      <NODE ${attrs({ Name: playlistName, Type: 1, KeyType: 0, Entries: entries.length })}>
-${entries.map((e) => `        <TRACK Key="${e.id}"/>`).join('\n')}
-      </NODE>
+    <NODE Type="0" Name="ROOT" Count="${lists.length}">
+${lists.map((p) => `      <NODE ${attrs({ Name: p.name, Type: 1, KeyType: 0, Entries: p.ids.length })}>
+${p.ids.map((id) => `        <TRACK Key="${id}"/>`).join('\n')}
+      </NODE>`).join('\n')}
     </NODE>
   </PLAYLISTS>
 </DJ_PLAYLISTS>

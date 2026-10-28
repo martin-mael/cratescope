@@ -7,6 +7,8 @@ const state = {
   tracks: new Map(),
   view: [],            // filtered + sorted ids
   folder: '',          // '' = root
+  playlists: [],       // [{ id, name, ids }]
+  playlist: null,      // id of the playlist being viewed (instead of a folder)
   sort: { key: 'title', dir: 1 },
   selected: new Set(),
   anchor: null,        // last clicked id (shift-select)
@@ -91,6 +93,7 @@ $('thead').addEventListener('click', (e) => {
 
 // ---------- filtering ----------
 function inFolder(t) {
+  if (t.external) return false; // loaded for a playlist, lives outside the open folder
   const f = state.folder;
   if (!f) return $('recursive').checked || t.dir === '';
   if ($('recursive').checked) return t.dir === f || t.dir.startsWith(f + SEP);
@@ -110,8 +113,10 @@ function computeView() {
   const ref = $('compatible').checked && state.loaded ? state.tracks.get(state.loaded) : null;
   const refA = ref && ref.analysis;
   const out = [];
-  for (const t of state.tracks.values()) {
-    if (!inFolder(t)) continue;
+  const pl = currentPlaylist();
+  const source = pl ? pl.ids.map((id) => state.tracks.get(id)).filter(Boolean) : state.tracks.values();
+  for (const t of source) {
+    if (!pl && !inFolder(t)) continue;
     const a = t.analysis;
     if (!isNaN(bMin) && (!a || a.bpm < bMin)) continue;
     if (!isNaN(bMax) && (!a || a.bpm > bMax)) continue;
@@ -122,6 +127,10 @@ function computeView() {
       if (!terms.every((x) => hay.includes(x))) continue;
     }
     out.push(t);
+  }
+  if (pl && state.sort.key === 'pos') { // playlist order
+    state.view = (state.sort.dir > 0 ? out : out.reverse()).map((t) => t.id);
+    return;
   }
   const col = COLS.find((c) => c.key === state.sort.key) || COLS[2];
   const dir = state.sort.dir;
@@ -137,7 +146,7 @@ function schedule() {
   scheduled = true;
   requestAnimationFrame(() => {
     scheduled = false;
-    if (state.dirtyTree) { renderTree(); state.dirtyTree = false; }
+    if (state.dirtyTree) { renderTree(); renderPlaylists(); state.dirtyTree = false; }
     if (state.dirtyView) { computeView(); state.dirtyView = false; }
     renderRows(true);
   });
@@ -169,8 +178,7 @@ function rowHtml(t) {
 
 function renderRows(force) {
   $('spacer').style.height = state.view.length * ROW_H + 'px';
-  $('emptyState').classList.toggle('hidden', state.tracks.size > 0);
-  if (state.root && state.tracks.size === 0) $('emptyState').querySelector('.big').textContent = 'Aucun fichier audio trouvé ici';
+  renderEmpty();
   const top = tbody.scrollTop, h = tbody.clientHeight;
   const first = Math.max(0, Math.floor(top / ROW_H) - 4);
   const last = Math.min(state.view.length, Math.ceil((top + h) / ROW_H) + 4);
@@ -202,6 +210,16 @@ function renderRows(force) {
   }
   for (const [i, el] of rowPool) if (!keep.has(i)) { el.remove(); rowPool.delete(i); }
 }
+function renderEmpty() {
+  const pl = currentPlaylist();
+  const folderTracks = [...state.tracks.values()].some((t) => !t.external);
+  $('emptyState').classList.toggle('hidden', pl ? pl.ids.length > 0 : folderTracks);
+  $('emptyBig').textContent = pl ? 'Playlist vide' : state.root && !folderTracks ? 'Aucun fichier audio trouvé ici' : 'Ouvre un dossier de musique';
+  $('emptyText').classList.toggle('hidden', !!pl);
+  $('btnOpen2').classList.toggle('hidden', !!pl);
+  $('emptyPl').classList.toggle('hidden', !pl);
+}
+
 tbody.addEventListener('scroll', () => renderRows(false), { passive: true });
 window.addEventListener('resize', () => { lastRange = ''; renderRows(true); drawDeck(); });
 
@@ -225,13 +243,16 @@ tbody.addEventListener('contextmenu', (e) => {
   const id = rowFromEvent(e);
   if (!id) return;
   if (!state.selected.has(id)) select(id, {}, { load: false }); // right click selects, never loads
-  api.contextMenu([...state.selected]);
+  api.contextMenu([...state.selected], state.playlist);
 });
+// rows are dragged as real files (drop into rekordbox, the Finder… or onto a playlist)
+let dragIds = null;
 tbody.addEventListener('dragstart', (e) => {
   const id = rowFromEvent(e);
   if (!id) return;
   e.preventDefault();
-  const ids = state.selected.has(id) ? [...state.selected] : [id];
+  const ids = state.selected.has(id) ? state.view.filter((x) => state.selected.has(x)) : [id];
+  dragIds = ids;
   api.startDrag(ids);
 });
 
@@ -268,6 +289,7 @@ function moveSelection(delta) {
 function buildTree() {
   const root = { name: state.root ? state.root.split(SEP).pop() : '', path: '', kids: new Map(), count: 0, own: 0 };
   for (const t of state.tracks.values()) {
+    if (t.external) continue;
     root.count++;
     if (!t.dir) { root.own++; continue; }
     let node = root;
@@ -289,7 +311,7 @@ function renderTree() {
     const kids = [...n.kids.values()].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
     const open = openNodes.has(n.path);
     return `<div class="node ${open ? '' : 'closed'}" data-path="${esc(n.path)}">
-      <div class="lbl ${state.folder === n.path ? 'active' : ''}"><span class="tw">${kids.length ? (open ? '▼' : '▶') : ''}</span><span class="nm">${depth === 0 ? '🎧 ' : '📁 '}${esc(n.name || 'Dossier')}</span><span class="ct">${n.count}</span></div>
+      <div class="lbl ${!state.playlist && state.folder === n.path ? 'active' : ''}"><span class="tw">${kids.length ? (open ? '▼' : '▶') : ''}</span><span class="nm">${depth === 0 ? '🎧 ' : '📁 '}${esc(n.name || 'Dossier')}</span><span class="ct">${n.count}</span></div>
       ${kids.length ? `<div class="kids">${kids.map((k) => html(k, depth + 1)).join('')}</div>` : ''}
     </div>`;
   };
@@ -303,6 +325,7 @@ $('tree').addEventListener('click', (e) => {
     if (openNodes.has(p)) openNodes.delete(p); else openNodes.add(p);
   } else {
     state.folder = p;
+    if (state.playlist) showPlaylist(null);
     openNodes.add(p);
     api.focus(p, $('recursive').checked);
     tbody.scrollTop = 0;
@@ -310,6 +333,137 @@ $('tree').addEventListener('click', (e) => {
   state.dirtyTree = true;
   invalidate();
 });
+
+// ---------- playlists ----------
+const currentPlaylist = () => (state.playlist && state.playlists.find((p) => p.id === state.playlist)) || null;
+
+function renderPlaylists() {
+  const html = state.playlists.map((p) => {
+    const missing = p.ids.filter((id) => !state.tracks.has(id)).length;
+    return `<div class="pl ${p.id === state.playlist ? 'active' : ''}" data-id="${p.id}" title="${esc(p.name)}">
+      <span>♫</span><span class="nm">${esc(p.name)}</span>
+      ${missing ? `<span class="ct miss" title="${missing} fichier(s) introuvable(s) (déplacé ou supprimé)">⚠ ${missing}</span>` : ''}
+      <span class="ct">${p.ids.length}</span></div>`;
+  }).join('');
+  $('plList').innerHTML = html || '<div class="pl-empty">Aucune playlist. ＋ pour en créer une.</div>';
+}
+
+function showPlaylist(id) {
+  state.playlist = id;
+  if (id) state.sort = { key: 'pos', dir: 1 };
+  else if (state.sort.key === 'pos') state.sort = { key: 'title', dir: 1 };
+  state.selected.clear();
+  tbody.scrollTop = 0;
+  renderHead();
+  state.dirtyTree = true;
+  invalidate();
+}
+
+// small modal asking for a name; resolves to the trimmed name or null
+function askName(title, value = '') {
+  return new Promise((resolve) => {
+    const dlg = $('nameDlg');
+    $('nameTitle').textContent = title;
+    $('nameInput').value = value;
+    dlg.returnValue = '';
+    dlg.addEventListener('close', () => {
+      const v = $('nameInput').value.trim();
+      resolve(dlg.returnValue === 'ok' && v ? v : null);
+    }, { once: true });
+    dlg.showModal();
+    $('nameInput').select();
+  });
+}
+
+async function newPlaylist(ids = []) {
+  const name = await askName('Nouvelle playlist');
+  if (!name) return;
+  const id = await api.createPlaylist(name, ids);
+  if (!ids.length) showPlaylist(id);
+}
+
+$('nameInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); $('nameDlg').close('ok'); } });
+$('btnNewPl').addEventListener('click', () => newPlaylist());
+$('plList').addEventListener('click', (e) => {
+  const el = e.target.closest('.pl');
+  if (!el) return;
+  if (el.dataset.id === state.playlist && state.sort.key !== 'pos') { state.sort = { key: 'pos', dir: 1 }; renderHead(); invalidate(); return; } // back to playlist order
+  showPlaylist(el.dataset.id);
+});
+$('plList').addEventListener('dblclick', (e) => { const el = e.target.closest('.pl'); if (el) renamePlaylist(el.dataset.id); });
+$('plList').addEventListener('contextmenu', (e) => { const el = e.target.closest('.pl'); if (el) api.playlistMenu(el.dataset.id); });
+
+async function renamePlaylist(id) {
+  const p = state.playlists.find((x) => x.id === id);
+  if (!p) return;
+  const name = await askName('Renommer la playlist', p.name);
+  if (name) api.renamePlaylist(id, name);
+}
+
+// drop: tracks from the list, or files / folders from the disk
+function dropInto(playlistId, e) {
+  const files = [...e.dataTransfer.files].map((f) => api.pathForFile(f)).filter(Boolean);
+  if (files.length) {
+    api.addFilesToPlaylist(playlistId, files).then((n) => flash(n ? `${n} titre(s) ajouté(s)` : 'Déjà dans la playlist'));
+  } else if (dragIds) {
+    api.addToPlaylist(playlistId, dragIds);
+  }
+  dragIds = null;
+}
+const accepts = (e) => [...e.dataTransfer.types].includes('Files') || dragIds;
+$('plList').addEventListener('dragover', (e) => {
+  const el = e.target.closest('.pl');
+  document.querySelectorAll('.pl.drop').forEach((x) => x !== el && x.classList.remove('drop'));
+  if (!el || !accepts(e)) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'copy';
+  el.classList.add('drop');
+});
+$('plList').addEventListener('dragleave', (e) => { if (!$('plList').contains(e.relatedTarget)) document.querySelectorAll('.pl.drop').forEach((x) => x.classList.remove('drop')); });
+$('plList').addEventListener('drop', (e) => {
+  e.preventDefault();
+  document.querySelectorAll('.pl.drop').forEach((x) => x.classList.remove('drop'));
+  const el = e.target.closest('.pl');
+  if (el) dropInto(el.dataset.id, e);
+});
+// files dropped on the list while a playlist is shown go into it
+const listEl = document.querySelector('.list');
+listEl.addEventListener('dragover', (e) => {
+  if (!state.playlist || !accepts(e)) return;
+  e.preventDefault();
+  listEl.classList.add('drop');
+});
+listEl.addEventListener('dragleave', (e) => { if (!listEl.contains(e.relatedTarget)) listEl.classList.remove('drop'); });
+listEl.addEventListener('drop', (e) => {
+  listEl.classList.remove('drop');
+  if (!state.playlist) return;
+  e.preventDefault();
+  dropInto(state.playlist, e);
+});
+window.addEventListener('dragover', (e) => e.preventDefault()); // a stray drop never navigates away
+window.addEventListener('drop', (e) => { e.preventDefault(); dragIds = null; });
+
+function removeSelectedFromPlaylist() {
+  if (!state.playlist || !state.selected.size) return;
+  api.removeFromPlaylist(state.playlist, [...state.selected]);
+  state.selected.clear();
+}
+
+let flashTimer;
+function flash(msg) {
+  $('statusRight').textContent = msg;
+  clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => { if ($('statusRight').textContent === msg) $('statusRight').textContent = ''; }, 4000);
+}
+
+api.onPlaylists((list) => {
+  state.playlists = list;
+  if (state.playlist && !currentPlaylist()) showPlaylist(null);
+  state.dirtyTree = true;
+  invalidate();
+});
+api.onNewPlaylist((ids) => newPlaylist(ids));
+api.onRenamePlaylist((id) => renamePlaylist(id));
 
 // ---------- deck / player ----------
 const audio = $('audio');
@@ -559,7 +713,7 @@ audio.addEventListener('seeked', () => { metro.next = null; });
 
 // ---------- keyboard ----------
 window.addEventListener('keydown', (e) => {
-  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || $('nameDlg').open || $('settingsDlg').open) {
     if (e.key === 'Escape') e.target.blur();
     return;
   }
@@ -581,6 +735,7 @@ window.addEventListener('keydown', (e) => {
   else if (e.key === 'g') grid.barHere();
   else if (e.key === 'G') grid.snapHere();
   else if (e.key === '/') { e.preventDefault(); fixBpm(0.5); }
+  else if ((e.key === 'Backspace' || e.key === 'Delete') && state.playlist) { e.preventDefault(); removeSelectedFromPlaylist(); }
 });
 
 // ---------- filters ----------
@@ -598,19 +753,28 @@ $('compatible').addEventListener('change', invalidate);
 // ---------- export ----------
 $('btnExport').addEventListener('click', (e) => { e.stopPropagation(); $('exportMenu').classList.toggle('hidden'); });
 window.addEventListener('click', () => $('exportMenu').classList.add('hidden'));
+function reportExport(res) {
+  if (!res || !res.count && !res.skipped) return;
+  let msg = `rekordbox XML : ${res.count} titre(s) exporté(s)`;
+  if (res.skipped.length) msg += ` · ${res.skipped.length} ignoré(s) (format non lu par rekordbox ou pas encore analysé)`;
+  $('statusRight').textContent = msg;
+  $('statusRight').title = res.skipped.join('\n');
+}
+api.onExportDone(reportExport);
 $('exportMenu').addEventListener('click', (e) => {
+  const all = e.target.closest('[data-pl]');
+  if (all) {
+    if (!state.playlists.length) { flash('Aucune playlist à exporter'); return; }
+    api.exportPlaylists(all.dataset.pl).then(reportExport);
+    return;
+  }
   const b = e.target.closest('[data-fmt]');
   if (!b) return;
   const ids = state.selected.size > 1 ? state.view.filter((id) => state.selected.has(id)) : state.view;
-  // playlist named after the folder being viewed
-  const name = 'CrateScope · ' + ((state.folder || state.root || '').split(SEP).pop() || 'export');
-  api.exportList(b.dataset.fmt, ids, name).then((res) => {
-    if (!res || !res.count && !res.skipped) return;
-    let msg = `rekordbox XML : ${res.count} titre(s) exporté(s)`;
-    if (res.skipped.length) msg += ` · ${res.skipped.length} ignoré(s) (format non lu par rekordbox ou pas encore analysé)`;
-    $('statusRight').textContent = msg;
-    $('statusRight').title = res.skipped.join('\n');
-  });
+  // rekordbox playlist named after the playlist / folder being viewed
+  const pl = currentPlaylist();
+  const name = pl ? pl.name : 'CrateScope · ' + ((state.folder || state.root || '').split(SEP).pop() || 'export');
+  api.exportList(b.dataset.fmt, ids, name).then(reportExport);
 });
 
 // ---------- library ----------
@@ -620,7 +784,7 @@ function applySnapshot(snap) {
   state.tracks = new Map(snap.tracks.map((t) => [t.id, t]));
   $('rootName').textContent = snap.root;
   $('rootName').title = snap.root;
-  if (state.folder && ![...state.tracks.values()].some((t) => t.dir === state.folder || t.dir.startsWith(state.folder + SEP))) state.folder = '';
+  if (state.folder && ![...state.tracks.values()].some((t) => t.dir != null && (t.dir === state.folder || t.dir.startsWith(state.folder + SEP)))) state.folder = '';
   updateStats(snap.stats);
   state.dirtyTree = true;
   for (const el of rowPool.values()) el._sig = '';
@@ -631,7 +795,7 @@ function applySnapshot(snap) {
 async function chooseFolder() {
   $('status').textContent = 'Scan du dossier…';
   const snap = await api.chooseFolder();
-  if (snap) { state.folder = ''; state.selected.clear(); applySnapshot(snap); }
+  if (snap) { state.folder = ''; state.selected.clear(); if (state.playlist) showPlaylist(null); applySnapshot(snap); }
   else $('status').textContent = 'Prêt';
 }
 $('btnOpen').addEventListener('click', chooseFolder);
@@ -694,4 +858,5 @@ $('settingsDlg').addEventListener('close', async () => {
 // ---------- boot ----------
 renderHead();
 api.getSettings().then((s) => { state.settings = s; });
-api.openLast().then((snap) => { if (snap) applySnapshot(snap); else schedule(); });
+api.openLast().then((snap) => { if (snap) applySnapshot(snap); else schedule(); })
+  .then(() => api.playlists()).then((list) => { state.playlists = list; state.dirtyTree = true; invalidate(); });

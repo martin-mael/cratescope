@@ -28,6 +28,9 @@
         <button data-fmt="m3u">Playlist M3U8 (vue actuelle)</button>
         <button data-fmt="csv">Tableau CSV (vue actuelle)</button>
         <button data-fmt="rekordbox">rekordbox XML (vue actuelle)</button>
+        <div class="menu-sep"></div>
+        <button data-pl="rekordbox">rekordbox XML (toutes les playlists)</button>
+        <button data-pl="m3u">M3U8 (toutes les playlists)</button>
       </div>
     </div>
     <button id="btnSettings" class="btn icon" title="Réglages">⚙︎</button>
@@ -80,13 +83,16 @@
     <aside class="sidebar">
       <div class="side-head">Dossiers</div>
       <div id="tree" class="tree"></div>
+      <div class="side-head pl-head">Playlists <button id="btnNewPl" class="pl-add" title="Nouvelle playlist">＋</button></div>
+      <div id="plList" class="pl-list"></div>
     </aside>
     <section class="list">
       <div id="thead" class="row head"></div>
       <div id="tbody" class="tbody"><div id="spacer" class="tspacer"></div></div>
       <div id="emptyState" class="empty-state">
-        <div class="big">Ouvre un dossier de musique</div>
-        <div>MP3, WAV, FLAC, AIFF, OGG, OPUS, M4A… Les sous-dossiers sont scannés et analysés en arrière-plan (BPM, tonalité, waveform, loudness).</div>
+        <div class="big" id="emptyBig">Ouvre un dossier de musique</div>
+        <div id="emptyText">MP3, WAV, FLAC, AIFF, OGG, OPUS, M4A… Les sous-dossiers sont scannés et analysés en arrière-plan (BPM, tonalité, waveform, loudness).</div>
+        <div id="emptyPl" class="hidden">Glisse des titres sur la playlist (depuis la liste ou des fichiers et dossiers depuis le disque), ou fais un clic droit sur un titre › Ajouter à une playlist.</div>
         <button class="btn primary" id="btnOpen2">Ouvrir un dossier…</button>
       </div>
     </section>
@@ -127,6 +133,17 @@
       <div class="dlg-actions">
         <button value="cancel" class="btn">Annuler</button>
         <button value="ok" id="sSave" class="btn primary">Enregistrer</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="nameDlg" class="dialog small">
+    <form method="dialog">
+      <h2 id="nameTitle">Nouvelle playlist</h2>
+      <input id="nameInput" class="input wide" type="text" maxlength="120" autocomplete="off" />
+      <div class="dlg-actions">
+        <button value="cancel" class="btn" formnovalidate>Annuler</button>
+        <button value="ok" class="btn primary">OK</button>
       </div>
     </form>
   </dialog>

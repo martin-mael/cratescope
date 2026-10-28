@@ -31,13 +31,24 @@ npm start -- ~/Music/Crate     # ouvre directement un dossier
 - Glisser des lignes vers Rekordbox, Ableton, le Finder… ; clic droit : Finder, ré-analyse, re-recherche en ligne, Discogs/MusicBrainz.
 - Export de la vue (ou de la sélection) en playlist M3U8, en CSV ou en **rekordbox XML**.
 
+## Playlists
+
+Les playlists (en bas de la barre latérale) appartiennent à l'app, pas au dossier ouvert : elles peuvent mélanger des titres de plusieurs dossiers et restent disponibles quel que soit le dossier ouvert.
+
+- « ＋ » crée une playlist ; double-clic pour la renommer, clic droit pour la renommer, l'exporter ou la supprimer.
+- Ajouter des titres : glisser des lignes sur une playlist, clic droit › « Ajouter à une playlist », ou glisser des fichiers / dossiers depuis le disque (sur la playlist, ou dans la liste quand elle est affichée). Les titres hors du dossier ouvert sont analysés aussi.
+- Retirer : `⌫` / Suppr sur la sélection, ou clic droit. Les fichiers ne sont jamais touchés.
+- Ordre : celui d'ajout ; cliquer sur une colonne trie la vue, re-cliquer sur la playlist revient à son ordre (c'est cet ordre qui est exporté).
+- Export : clic droit sur une playlist (rekordbox XML ou M3U8), ou « Exporter » › « toutes les playlists » (un seul XML contenant toutes les playlists, ou un M3U8 par playlist).
+- Un ⚠ indique des fichiers introuvables (déplacés ou supprimés).
+
 ## Envoyer vers rekordbox
 
 « Exporter » → « rekordbox XML » crée un fichier contenant, pour chaque titre : BPM et grille (avec la position du 1er temps de mesure), tonalité et genre / styles / label / année (aucun cue point). Tes corrections manuelles (BPM, calage) sont incluses. Les fichiers audio ne sont pas modifiés. Les formats que rekordbox ne lit pas (OGG, Opus, WMA…) sont ignorés.
 
 Dans rekordbox :
 1. Préférences → Avancé → Base de données → « rekordbox xml » : choisis le fichier exporté, et active l'affichage de « rekordbox xml » dans l'arborescence (Préférences → Vue → Mise en page).
-2. Dans l'arborescence, ouvre « rekordbox xml » → « Playlists » → « CrateScope · <dossier> », sélectionne les titres et fais clic droit → « Importer dans la collection » (ou importe la playlist entière).
+2. Dans l'arborescence, ouvre « rekordbox xml » → « Playlists » → « CrateScope · <dossier> » (ou le nom de tes playlists), sélectionne les titres et fais clic droit → « Importer dans la collection » (ou importe la playlist entière).
 3. Pour que rekordbox ne recalcule pas BPM et grille par-dessus, désactive l'analyse automatique du BPM avant l'import (Préférences → Analyse). Fais un essai sur quelques titres avant toute la collection.
 
 Pour les MP3, la grille est décalée de l'écart de lecture entre ffmpeg et rekordbox (rekordbox lit la trame d'en-tête LAME/Xing comme du silence et ne retire pas le délai d'encodage : ~51 ms pour un MP3 LAME classique, calculé fichier par fichier).

@@ -79,6 +79,7 @@ class Library extends EventEmitter {
     this.analyzeQueue = []; this.analyzeIdx = 0;
     this.onlineQueue = []; this.onlineBusy = 0;
     this.watcher = null;
+    this.pinned = () => []; // paths kept loaded outside the open folder (playlist tracks)
     this.flushTimer = setInterval(() => this.flushUpdates(), 200);
     this.startWorkers();
   }
@@ -101,8 +102,20 @@ class Library extends EventEmitter {
     this.focusQueue = []; this.probeQueue = []; this.analyzeQueue = []; this.onlineQueue = [];
     this.probeIdx = this.analyzeIdx = 0;
     await this.scan();
+    await this.ensure(this.pinned());
     this.watch();
     return this.snapshot();
+  }
+
+  // loads tracks that live outside the open folder (playlists); they get probed and analysed too
+  async ensure(paths) {
+    const todo = paths.filter((p) => !this.tracks.has(hashId(p)));
+    const stats = await Promise.all(todo.map((f) => fsp.stat(f).catch(() => null)));
+    todo.forEach((file, i) => {
+      const id = hashId(file);
+      if (stats[i] && stats[i].isFile() && !this.tracks.has(id)) this.addTrack(id, file, stats[i], true);
+    });
+    this.pump();
   }
 
   async walk(dir, out) {
@@ -132,24 +145,40 @@ class Library extends EventEmitter {
       const id = hashId(file);
       seen.add(id);
       const existing = this.tracks.get(id);
+      if (existing && existing.external) this.adopt(existing);
       if (existing && existing.size === st.size && existing.mtime === st.mtimeMs) return;
       this.addTrack(id, file, st);
     });
-    for (const id of [...this.tracks.keys()]) {
-      if (!seen.has(id)) { this.tracks.delete(id); this.emit('removed', id); }
+    for (const [id, t] of [...this.tracks]) {
+      if (!seen.has(id) && !t.external) { this.tracks.delete(id); this.emit('removed', id); }
     }
     this.pump();
   }
 
-  addTrack(id, file, st) {
+  inRoot(file) {
+    if (!this.root) return false;
     const rel = path.relative(this.root, file);
+    return !!rel && !rel.startsWith('..') && !path.isAbsolute(rel);
+  }
+
+  // an external track found by the folder scan becomes a regular one
+  adopt(t) {
+    const rel = path.relative(this.root, t.path);
+    Object.assign(t, { rel, dir: path.dirname(rel) === '.' ? '' : path.dirname(rel), external: false });
+    this.dirty.add(t.id);
+  }
+
+  addTrack(id, file, st, external = false) {
+    external = external && !this.inRoot(file);
+    const rel = external ? file : path.relative(this.root, file);
     const name = path.basename(file);
     const c = this.cache.data[file];
     const valid = c && c.size === st.size && c.mtime === st.mtimeMs;
     const parsed = parseFilename(name);
     const t = {
       id, path: file, rel, name,
-      dir: path.dirname(rel) === '.' ? '' : path.dirname(rel),
+      dir: external ? null : path.dirname(rel) === '.' ? '' : path.dirname(rel),
+      external,
       ext: path.extname(name).slice(1).toLowerCase(),
       size: st.size, mtime: st.mtimeMs,
       fileUrl: pathToFileURL(file).href,
@@ -186,6 +215,7 @@ class Library extends EventEmitter {
   focus(dir, recursive) {
     const ids = [];
     for (const t of this.tracks.values()) {
+      if (t.external) continue;
       const inDir = recursive ? (dir === '' || t.dir === dir || t.dir.startsWith(dir + path.sep)) : t.dir === dir;
       if (inDir && (!t.probe || needsAnalysis(t))) ids.push(t.id);
     }
@@ -435,4 +465,4 @@ class Library extends EventEmitter {
   }
 }
 
-module.exports = { Library, parseFilename };
+module.exports = { Library, parseFilename, hashId, AUDIO_EXT };

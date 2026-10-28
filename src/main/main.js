@@ -4,11 +4,14 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { pathToFileURL } = require('url');
-const { Library } = require('./library');
+const { Library, hashId, AUDIO_EXT } = require('./library');
+const { Playlists } = require('./playlists');
 const { buildXml, mp3Offsets } = require('./rekordbox');
 const { extractCover, transcodeForPlayback } = require('../analysis/ffmpeg');
 
 const isMac = process.platform === 'darwin';
+// dev only: run against a throwaway profile (smoke tests)
+if (!app.isPackaged && process.env.CRATESCOPE_USER_DATA) app.setPath('userData', process.env.CRATESCOPE_USER_DATA);
 
 // Packaged builds ship ffmpeg/ffprobe in resources/ffmpeg; workers inherit these env vars.
 if (app.isPackaged) {
@@ -35,6 +38,7 @@ const DEFAULTS = {
 
 let win;
 let library;
+let playlists;
 let settings;
 const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
 
@@ -81,6 +85,9 @@ app.whenReady().then(() => {
   library.on('update', (u) => send('library:update', u));
   library.on('removed', (id) => send('library:removed', id));
   library.on('rescanned', () => send('library:snapshot', library.snapshot()));
+  playlists = new Playlists(path.join(app.getPath('userData'), 'playlists.json'));
+  library.pinned = () => playlists.allPaths();
+  playlists.on('change', () => send('playlists:update', publicPlaylists()));
   createWindow();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
@@ -157,11 +164,23 @@ ipcMain.on('track:drag', (e, ids) => {
   e.sender.startDrag(files.length === 1 ? { file: files[0], icon: dragIcon() } : { files, icon: dragIcon() });
 });
 
-ipcMain.on('track:context', (e, ids) => {
+ipcMain.on('track:context', (e, { ids, playlist }) => {
   const tracks = ids.map((id) => library.get(id)).filter(Boolean);
   if (!tracks.length) return;
   const one = tracks[0];
+  const paths = tracks.map((t) => t.path);
+  const current = playlist && playlists.get(playlist);
   Menu.buildFromTemplate([
+    {
+      label: tracks.length > 1 ? `Ajouter ${tracks.length} titres à une playlist` : 'Ajouter à une playlist',
+      submenu: [
+        ...playlists.list.map((p) => ({ label: p.name, enabled: p !== current, click: () => playlists.add(p.id, paths) })),
+        ...(playlists.list.length ? [{ type: 'separator' }] : []),
+        { label: 'Nouvelle playlist…', click: () => send('playlists:new', ids) },
+      ],
+    },
+    ...(current ? [{ label: `Retirer de « ${current.name} »   ( ⌫ )`, click: () => playlists.removeTracks(current.id, paths) }] : []),
+    { type: 'separator' },
     { label: isMac ? 'Afficher dans le Finder' : "Afficher dans l'Explorateur", click: () => shell.showItemInFolder(one.path) },
     { label: 'Copier le chemin', click: () => clipboard.writeText(tracks.map((t) => t.path).join('\n')) },
     { type: 'separator' },
@@ -177,17 +196,113 @@ ipcMain.on('track:context', (e, ids) => {
   ]).popup({ window: BrowserWindow.fromWebContents(e.sender) });
 });
 
+// ---------- playlists ----------
+const publicPlaylists = () => playlists.list.map((p) => ({ id: p.id, name: p.name, ids: p.paths.map(hashId) }));
+const pathsOf = (ids) => ids.map((id) => library.get(id)).filter(Boolean).map((t) => t.path);
+
+ipcMain.handle('playlists:get', async () => {
+  await library.ensure(playlists.allPaths());
+  return publicPlaylists();
+});
+ipcMain.handle('playlists:create', async (_e, { name, ids }) => playlists.create(name, pathsOf(ids || [])).id);
+ipcMain.on('playlists:add', (_e, { id, ids }) => playlists.add(id, pathsOf(ids)));
+ipcMain.on('playlists:removeTracks', (_e, { id, ids }) => playlists.removeTracks(id, pathsOf(ids)));
+ipcMain.on('playlists:rename', (_e, { id, name }) => playlists.rename(id, name));
+
+// files / folders dropped from the Finder or the track list; folders are added recursively
+ipcMain.handle('playlists:addFiles', async (_e, { id, files }) => {
+  const paths = [];
+  for (const f of files) {
+    const st = await fs.promises.stat(f).catch(() => null);
+    if (!st) continue;
+    if (st.isDirectory()) { const found = []; await library.walk(f, found); paths.push(...found.sort()); }
+    else if (AUDIO_EXT.has(path.extname(f).slice(1).toLowerCase())) paths.push(f);
+  }
+  await library.ensure(paths);
+  return playlists.add(id, paths);
+});
+
+async function deletePlaylist(id) {
+  const p = playlists.get(id);
+  if (!p) return;
+  const r = await dialog.showMessageBox(win, {
+    type: 'warning', buttons: ['Supprimer', 'Annuler'], defaultId: 1, cancelId: 1,
+    message: `Supprimer la playlist « ${p.name} » ?`, detail: 'Les fichiers audio ne sont pas touchés.',
+  });
+  if (r.response === 0) playlists.remove(id);
+}
+ipcMain.on('playlists:delete', (_e, id) => deletePlaylist(id));
+
+ipcMain.on('playlists:context', (e, id) => {
+  const p = playlists.get(id);
+  if (!p) return;
+  Menu.buildFromTemplate([
+    { label: 'Renommer…', click: () => send('playlists:rename', id) },
+    { type: 'separator' },
+    { label: 'Exporter en rekordbox XML…', click: () => exportPlaylists('rekordbox', [id]).then((r) => send('export:done', r)) },
+    { label: 'Exporter en M3U8…', click: () => exportPlaylists('m3u', [id]) },
+    { type: 'separator' },
+    { label: 'Supprimer la playlist…', click: () => deletePlaylist(id) },
+  ]).popup({ window: BrowserWindow.fromWebContents(e.sender) });
+});
+
+// ---------- export ----------
+const withGrid = (t) => ({ ...t, analysis: library.effectiveAnalysis(t) });
+
+async function writeRekordbox(tracks, opts, defaultName) {
+  const r = await dialog.showSaveDialog(win, { defaultPath: defaultName, filters: [{ name: 'rekordbox XML', extensions: ['xml'] }] });
+  if (r.canceled || !r.filePath) return null;
+  const offsets = await mp3Offsets(tracks);
+  const res = buildXml(tracks.map(withGrid), { ...opts, offsets });
+  fs.writeFileSync(r.filePath, res.xml);
+  shell.showItemInFolder(r.filePath);
+  return { count: res.count, skipped: res.skipped.map((t) => t.name) };
+}
+
+function m3u(tracks) {
+  return ['#EXTM3U', ...tracks.flatMap((t) => {
+    const tg = (t.probe && t.probe.tags) || {};
+    const dur = Math.round((t.analysis && t.analysis.duration) || (t.probe && t.probe.duration) || -1);
+    return [`#EXTINF:${dur},${tg.artist || t.parsed.artist} - ${tg.title || t.parsed.title}`, t.path];
+  })].join('\n');
+}
+
+const safeName = (s) => s.replace(/[\\/:*?"<>|]/g, '_').trim() || 'playlist';
+
+// one or more playlists: a single rekordbox XML holding all of them, or one .m3u8 per playlist
+async function exportPlaylists(format, ids) {
+  const lists = ids.map((id) => playlists.get(id)).filter(Boolean);
+  if (!lists.length) return null;
+  const trackOf = (p) => library.get(hashId(p));
+  if (format === 'rekordbox') {
+    const tracks = [...new Set(lists.flatMap((p) => p.paths))].map(trackOf).filter(Boolean);
+    const file = lists.length === 1 ? `${safeName(lists[0].name)}.xml` : 'cratescope-playlists.xml';
+    return writeRekordbox(tracks, { playlists: lists }, file);
+  }
+  let dir;
+  if (lists.length === 1) {
+    const r = await dialog.showSaveDialog(win, { defaultPath: `${safeName(lists[0].name)}.m3u8`, filters: [{ name: 'Playlist', extensions: ['m3u8'] }] });
+    if (r.canceled || !r.filePath) return null;
+    fs.writeFileSync(r.filePath, m3u(lists[0].paths.map(trackOf).filter(Boolean)));
+    shell.showItemInFolder(r.filePath);
+    return true;
+  }
+  const r = await dialog.showOpenDialog(win, { title: 'Dossier où écrire les playlists', properties: ['openDirectory', 'createDirectory'] });
+  if (r.canceled || !(dir = r.filePaths[0])) return null;
+  let first;
+  for (const p of lists) {
+    const file = path.join(dir, `${safeName(p.name)}.m3u8`);
+    fs.writeFileSync(file, m3u(p.paths.map(trackOf).filter(Boolean)));
+    first = first || file;
+  }
+  shell.showItemInFolder(first);
+  return true;
+}
+ipcMain.handle('export:playlists', (_e, { format, ids }) => exportPlaylists(format, ids || playlists.list.map((p) => p.id)));
+
 ipcMain.handle('export', async (_e, { format, ids, name }) => {
   const tracks = ids.map((id) => library.get(id)).filter(Boolean);
-  if (format === 'rekordbox') {
-    const r = await dialog.showSaveDialog(win, { defaultPath: 'cratescope-rekordbox.xml', filters: [{ name: 'rekordbox XML', extensions: ['xml'] }] });
-    if (r.canceled || !r.filePath) return null;
-    const offsets = await mp3Offsets(tracks);
-    const res = buildXml(tracks.map((t) => ({ ...t, analysis: library.effectiveAnalysis(t) })), { playlistName: name || 'CrateScope', offsets });
-    fs.writeFileSync(r.filePath, res.xml);
-    shell.showItemInFolder(r.filePath);
-    return { count: res.count, skipped: res.skipped.map((t) => t.name) };
-  }
+  if (format === 'rekordbox') return writeRekordbox(tracks, { playlistName: name || 'CrateScope' }, 'cratescope-rekordbox.xml');
   const r = await dialog.showSaveDialog(win, {
     defaultPath: format === 'csv' ? 'cratescope.csv' : 'cratescope.m3u8',
     filters: format === 'csv' ? [{ name: 'CSV', extensions: ['csv'] }] : [{ name: 'Playlist', extensions: ['m3u8'] }],
@@ -204,12 +319,7 @@ ipcMain.handle('export', async (_e, { format, ids, name }) => {
     });
     fs.writeFileSync(r.filePath, [head.join(','), ...rows].join('\n'));
   } else {
-    const lines = ['#EXTM3U', ...tracks.flatMap((t) => {
-      const tg = (t.probe && t.probe.tags) || {};
-      const dur = Math.round((t.analysis && t.analysis.duration) || (t.probe && t.probe.duration) || -1);
-      return [`#EXTINF:${dur},${tg.artist || t.parsed.artist} - ${tg.title || t.parsed.title}`, t.path];
-    })];
-    fs.writeFileSync(r.filePath, lines.join('\n'));
+    fs.writeFileSync(r.filePath, m3u(tracks));
   }
   shell.showItemInFolder(r.filePath);
   return true;
