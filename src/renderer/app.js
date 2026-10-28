@@ -35,7 +35,7 @@ const fYear = (t) => tags(t).year || (t.online && t.online.year) || '';
 const fLabel = (t) => tags(t).label || (t.online && t.online.label) || '';
 const fDur = (t) => (t.analysis && t.analysis.duration) || (t.probe && t.probe.duration) || 0;
 const fmtTime = (s) => { if (s == null || isNaN(s)) return ''; s = Math.max(0, s); return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`; };
-const fmtBpm = (b) => (b % 1 ? b.toFixed(1) : String(b));
+const fmtBpm = (b) => (Math.abs(b - Math.round(b)) < 0.005 ? String(Math.round(b)) : b.toFixed(2).replace(/0$/, ''));
 const LOSSLESS = new Set(['flac', 'wav', 'aif', 'aiff', 'alac', 'ape', 'wv']);
 function fFormat(t) {
   const p = t.probe;
@@ -192,7 +192,7 @@ function renderRows(force) {
       tbody.appendChild(el);
       rowPool.set(i, el);
     }
-    const sig = `${t.id}|${t.bpmMul}|${t.status}|${t.onlinePending}|${t.online ? t.online.fetchedAt : 0}|${t.probe ? 1 : 0}`;
+    const sig = `${t.id}|${t.edit ? JSON.stringify(t.edit) : ''}|${t.analysis ? t.analysis.version : 0}|${t.status}|${t.onlinePending}|${t.online ? t.online.fetchedAt : 0}|${t.probe ? 1 : 0}`;
     if (el._sig !== sig) {
       el._sig = sig;
       el.dataset.id = t.id;
@@ -376,7 +376,8 @@ function renderDeckInfo(t) {
   $('dArtist').textContent = [fArtist(t), tg.album || o.album].filter(Boolean).join(' — ');
   $('dBpm').textContent = a.bpm ? fmtBpm(a.bpm) : '…';
   $('dBpm').classList.toggle('bpm-fixed', !!a.bpmDetected);
-  $('dBpm').title = a.bpmDetected ? `Corrigé à la main (détecté : ${fmtBpm(a.bpmDetected)})` : '';
+  $('dBpm').title = (a.bpmDetected ? `Corrigé à la main (détecté : ${fmtBpm(a.bpmDetected)}). ` : '') + 'Cliquer pour saisir le BPM';
+  $('gAuto').classList.toggle('edited', !!t.edit);
   $('dKey').innerHTML = a.camelot ? `<span class="key" style="background:${keyColor(a.camelot)}">${a.camelot}</span> <span class="key-name">${a.key}</span>` : '…';
   $('dEnergy').textContent = a.energy || '…';
   $('dLufs').textContent = a.lufs != null ? a.lufs.toFixed(1) : '…';
@@ -394,6 +395,12 @@ function renderDeckInfo(t) {
   meta.push(`${fFormat(t)} · ${(t.size / 1048576).toFixed(1)} Mo${a.lra != null ? ` · LRA ${a.lra} LU` : ''}`);
   const tagInfo = [tg.tagBpm && `BPM ${tg.tagBpm}`, tg.tagKey && `Key ${tg.tagKey}`].filter(Boolean).join(', ');
   if (tagInfo) meta.push(`Tags du fichier : ${tagInfo}`);
+  if (a.bpm && a.gridRmsMs != null) {
+    const parts = [a.tempoStable ? `Grille : tempo stable (écart moyen ${a.gridRmsMs} ms)` : `<span class="grid-warn">⚠ Tempo variable (dérive ${a.gridDriftMs} ms) : grille approximative</span>`];
+    if (!a.gridEdited) parts.push(a.downbeatConfidence >= 0.2 ? '1er temps détecté' : '<span class="grid-warn">1er temps incertain, à vérifier</span>');
+    else parts.push('calage manuel');
+    meta.push(parts.join(' · '));
+  }
   const links = [o.discogsUrl && `<a data-href="${esc(o.discogsUrl)}">Discogs ↗</a>`, o.mbUrl && `<a data-href="${esc(o.mbUrl)}">MusicBrainz ↗</a>`].filter(Boolean);
   if (links.length) meta.push(links.join(' &nbsp; '));
   if (t.error) meta.push(`<span style="color:#ff4d5e">Erreur : ${esc(t.error)}</span>`);
@@ -409,17 +416,19 @@ function drawDeck() {
   const time = audio.currentTime || 0;
   const w = state.waves;
   const zs = zoomSeconds();
-  waveform.drawOverview($('overWave'), w && w.overview, dur ? time / dur : 0, { window: dur ? [(time - zs / 2) / dur, (time + zs / 2) / dur] : null });
+  waveform.drawOverview($('overWave'), w && w.overview, dur ? time / dur : 0, { window: dur ? [(time - zs / 2) / dur, (time + zs / 2) / dur] : null, analysis: t && t.analysis, duration: dur });
   waveform.drawZoom($('zoomWave'), w && w.detail, time, zs, t && t.analysis);
   $('tPos').textContent = fmtTime(time);
   $('tDur').textContent = fmtTime(dur);
   $('btnPlay').textContent = audio.paused ? '▶' : '❚❚';
 }
 
-(function loop() {
+function loop() {
   if (!audio.paused || dragging) drawDeck();
+  metroTick();
   requestAnimationFrame(loop);
-})();
+}
+requestAnimationFrame(loop); // first frame runs after the whole script (metronome) is defined
 ['pause', 'play', 'seeked', 'loadedmetadata'].forEach((ev) => audio.addEventListener(ev, drawDeck));
 audio.addEventListener('ended', () => moveSelection(1)); // auto-advance like a crate preview
 
@@ -458,6 +467,98 @@ function fixBpm(factor) {
 $('bpmDouble').addEventListener('click', () => state.loaded && api.setBpm([state.loaded], 2));
 $('bpmHalf').addEventListener('click', () => state.loaded && api.setBpm([state.loaded], 0.5));
 
+// ---------- manual BPM ----------
+function startBpmEdit() {
+  const t = state.loaded && state.tracks.get(state.loaded);
+  if (!t || !t.analysis) return;
+  const inp = $('bpmInput');
+  inp.value = fmtBpm(t.analysis.bpm);
+  $('dBpm').classList.add('hidden');
+  inp.classList.remove('hidden');
+  inp.focus();
+  inp.select();
+}
+function endBpmEdit(commit) {
+  const inp = $('bpmInput');
+  if (inp.classList.contains('hidden')) return;
+  inp.classList.add('hidden');
+  $('dBpm').classList.remove('hidden');
+  const v = parseFloat(inp.value.replace(',', '.'));
+  if (commit && state.loaded && v >= 30 && v <= 300) api.setGrid(state.loaded, { bpm: v });
+}
+$('dBpm').addEventListener('click', startBpmEdit);
+$('bpmInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); endBpmEdit(true); }
+  else if (e.key === 'Escape') { e.preventDefault(); endBpmEdit(false); }
+  e.stopPropagation();
+});
+$('bpmInput').addEventListener('blur', () => endBpmEdit(true));
+
+// ---------- grid editing ----------
+// The grid is anchor + k * beat; bars start every 4 beats from the anchor. Every tool moves the anchor.
+function loadedGrid() {
+  const t = state.loaded && state.tracks.get(state.loaded);
+  return t && t.analysis && t.analysis.bpm ? t.analysis : null;
+}
+function setAnchor(v) { if (state.loaded) api.setGrid(state.loaded, { downbeat: Math.max(0, v) }); }
+const grid = {
+  nudge(ms) { const a = loadedGrid(); if (a) setAnchor(a.anchor + ms / 1000); },
+  shiftBar(dir) { const a = loadedGrid(); if (a) setAnchor(a.anchor + (dir * 60) / a.bpm); },
+  barHere() {
+    const a = loadedGrid();
+    if (!a) return;
+    const beat = 60 / a.bpm;
+    setAnchor(a.anchor + Math.round((audio.currentTime - a.anchor) / beat) * beat);
+  },
+  snapHere() { if (loadedGrid()) setAnchor(audio.currentTime); },
+  auto() { if (state.loaded) api.setGrid(state.loaded, { reset: true }); },
+};
+$('gNudgeL').addEventListener('click', (e) => grid.nudge(e.altKey ? -1 : -5));
+$('gNudgeR').addEventListener('click', (e) => grid.nudge(e.altKey ? 1 : 5));
+$('gBarPrev').addEventListener('click', () => grid.shiftBar(-1));
+$('gBarNext').addEventListener('click', () => grid.shiftBar(1));
+$('gBarHere').addEventListener('click', grid.barHere);
+$('gSnapHere').addEventListener('click', grid.snapHere);
+$('gAuto').addEventListener('click', grid.auto);
+
+// ---------- metronome ----------
+// Clicks are scheduled on an AudioContext slightly ahead of the <audio> playhead.
+const metro = { on: false, ctx: null, next: null };
+function metroClick(when, bar) {
+  const ctx = metro.ctx;
+  const osc = ctx.createOscillator(), g = ctx.createGain();
+  osc.frequency.value = bar ? 1760 : 1175;
+  const vol = 0.55 * audio.volume;
+  g.gain.setValueAtTime(0.0001, when);
+  g.gain.linearRampToValueAtTime(vol, when + 0.001);
+  g.gain.exponentialRampToValueAtTime(0.0001, when + 0.05);
+  osc.connect(g).connect(ctx.destination);
+  osc.start(when);
+  osc.stop(when + 0.06);
+}
+function metroTick() {
+  const a = loadedGrid();
+  if (!metro.on || audio.paused || !a) { metro.next = null; return; }
+  if (!metro.ctx) metro.ctx = new AudioContext();
+  const beat = 60 / a.bpm, now = audio.currentTime;
+  if (metro.next == null || metro.next < now - 0.05 || metro.next > now + 0.5) {
+    metro.next = a.beatOffset + Math.ceil((now - a.beatOffset) / beat) * beat;
+  }
+  while (metro.next < now + 0.12) {
+    const n = Math.round((metro.next - a.downbeat) / beat);
+    metroClick(metro.ctx.currentTime + Math.max(0, metro.next - now) / (audio.playbackRate || 1), ((n % 4) + 4) % 4 === 0);
+    metro.next += beat;
+  }
+}
+function toggleMetro() {
+  metro.on = !metro.on;
+  metro.next = null;
+  $('gClick').classList.toggle('on', metro.on);
+  if (metro.on && metro.ctx && metro.ctx.state === 'suspended') metro.ctx.resume();
+}
+$('gClick').addEventListener('click', toggleMetro);
+audio.addEventListener('seeked', () => { metro.next = null; });
+
 // ---------- keyboard ----------
 window.addEventListener('keydown', (e) => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') {
@@ -474,6 +575,13 @@ window.addEventListener('keydown', (e) => {
   else if ((e.metaKey || e.ctrlKey) && e.key === 'a') { e.preventDefault(); state.selected = new Set(state.view); renderRows(true); }
   else if (e.key === 'm') $('compatible').click();
   else if (e.key === '*') fixBpm(2);
+  else if (e.key === 'c') toggleMetro();
+  else if (e.key === '[') grid.shiftBar(-1);
+  else if (e.key === ']') grid.shiftBar(1);
+  else if (e.key === ',') grid.nudge(e.altKey ? -1 : -5);
+  else if (e.key === '.') grid.nudge(e.altKey ? 1 : 5);
+  else if (e.key === 'g') grid.barHere();
+  else if (e.key === 'G') grid.snapHere();
   else if (e.key === '/') { e.preventDefault(); fixBpm(0.5); }
 });
 
@@ -528,7 +636,7 @@ api.onUpdate(({ tracks, stats }) => {
   for (const t of tracks) {
     if (!state.tracks.has(t.id)) state.dirtyTree = true;
     state.tracks.set(t.id, t);
-    if (t.id === state.loaded) renderDeckInfo(t);
+    if (t.id === state.loaded) { renderDeckInfo(t); metro.next = null; requestAnimationFrame(drawDeck); }
   }
   if (stats.total !== lastCount) state.dirtyTree = true;
   updateStats(stats);

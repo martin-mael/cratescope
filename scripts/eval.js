@@ -14,6 +14,7 @@ const EXT = /\.(mp3|wav|flac|aiff?|ogg|opus|m4a|aac|alac|wma)$/i;
   const files = fs.readdirSync(dir).filter((f) => EXT.test(f)).map((f) => path.join(dir, f));
   let nb = 0, okB = 0, okBo = 0, nk = 0, okK = 0, okKr = 0;
   const t0 = Date.now();
+  const grid = [];
   for (const f of files) {
     const p = await probe(f);
     const t1 = Date.now();
@@ -38,7 +39,11 @@ const EXT = /\.(mp3|wav|flac|aiff?|ogg|opus|m4a|aac|alac|wma)$/i;
       if (tk === a.camelot || (n === an) || (l === al && (Math.abs(n - an) === 1 || Math.abs(n - an) === 11))) okKr++;
       else mark += ' KEY✗';
     }
-    console.log(`${path.basename(f).slice(0, 50).padEnd(50)} bpm ${String(a.bpm).padStart(6)} (tag ${p.tags.tagBpm || '-'}) key ${a.camelot.padStart(3)} ${a.key.padEnd(3)} (tag ${p.tags.tagKey || '-'}→${tk || '-'}) lufs ${d.lufs} E${a.energy}  dec ${t2 - t1}ms dsp ${t3 - t2}ms${mark}`);
+    grid.push(a);
+    console.log(`${path.basename(f).slice(0, 44).padEnd(44)} bpm ${String(a.bpm).padStart(6)} (tag ${p.tags.tagBpm || '-'}) key ${a.camelot.padStart(3)} (tag ${tk || '-'}) grid rms ${a.gridRmsMs}ms drift ${a.gridDriftMs}ms ${a.tempoStable ? 'stable' : 'VARIABLE'} bar1 conf ${a.downbeatConfidence} drop ${a.mainDrop ?? '-'}  ${t3 - t1}ms${mark}`);
   }
-  console.log(`\nBPM exact ${okB}/${nb}, incl. octave ${okBo}/${nb}; key exact ${okK}/${nk}, neighbour/relative ${okKr}/${nk}; total ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  const pct = (f) => Math.round((100 * grid.filter(f).length) / grid.length);
+  const med = (arr) => arr.sort((x, y) => x - y)[arr.length >> 1];
+  console.log(`\nGrid: ${pct((a) => a.tempoStable)}% stable tempo, median rms ${med(grid.map((a) => a.gridRmsMs || 99))}ms, median drift ${med(grid.map((a) => a.gridDriftMs || 99))}ms, bar-1 confidence ≥0.2 for ${pct((a) => a.downbeatConfidence >= 0.2)}%, drop found for ${pct((a) => a.mainDrop != null)}%`);
+  console.log(`BPM exact ${okB}/${nb}, incl. octave ${okBo}/${nb}; key exact ${okK}/${nk}, neighbour/relative ${okKr}/${nk}; total ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 })();

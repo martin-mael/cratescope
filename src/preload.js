@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld('api', {
   reanalyzeStale: () => ipcRenderer.send('library:reanalyzeStale'),
   refetch: (ids) => ipcRenderer.send('library:refetch', ids),
   setBpm: (ids, factor) => ipcRenderer.send('library:bpm', { ids, factor }),
+  setGrid: (id, patch) => ipcRenderer.send('library:grid', { id, patch }),
   waves: (id) => ipcRenderer.invoke('track:waves', id),
   cover: (id) => ipcRenderer.invoke('track:cover', id),
   playable: (id) => ipcRenderer.invoke('track:playable', id),

@@ -8,6 +8,10 @@ const { pathToFileURL } = require('url');
 const { Worker } = require('worker_threads');
 const { EventEmitter } = require('events');
 const online = require('./online');
+const { ANALYSIS_VERSION } = require('../analysis/dsp');
+
+const needsAnalysis = (t) => !t.analysis || t.analysis.version !== ANALYSIS_VERSION;
+const round = (v, d) => Math.round(v * 10 ** d) / 10 ** d;
 
 const AUDIO_EXT = new Set(['mp3', 'wav', 'flac', 'aif', 'aiff', 'ogg', 'oga', 'opus', 'm4a', 'aac', 'alac', 'wma', 'ape', 'wv', 'mp4', 'webm', 'mka']);
 
@@ -26,6 +30,14 @@ function parseFilename(name) {
   }
   if (parts.length >= 2) return { artist: parts[0], title: parts.slice(1).join(' - ') };
   return { artist: '', title: s };
+}
+
+// cache entries from before manual grid editing stored a ×2 / ÷2 multiplier
+function migrateEdit(c) {
+  if (!c) return null;
+  if (c.edit) return c.edit;
+  if (c.bpmMul && c.bpmMul !== 1 && c.analysis) return { bpm: round(c.analysis.bpm * c.bpmMul, 2) };
+  return null;
 }
 
 class JsonStore {
@@ -146,7 +158,7 @@ class Library extends EventEmitter {
       analysis: valid ? c.analysis || null : null,
       mini: valid ? c.mini || null : null,
       online: c && c.online ? c.online : null, // online data survives file edits
-      bpmMul: (c && c.bpmMul) || 1, // manual x2 / ÷2 correction, survives re-analysis
+      edit: migrateEdit(c), // manual BPM / grid corrections, survive re-analysis
       error: null,
       busy: false,
     };
@@ -154,7 +166,7 @@ class Library extends EventEmitter {
     if (t.analysis && (t.analysis.minBpm !== s.minBpm || t.analysis.maxBpm !== s.maxBpm)) t.staleRange = true;
     this.tracks.set(id, t);
     if (!t.probe) this.probeQueue.push(id);
-    if (!t.analysis) this.analyzeQueue.push(id);
+    if (needsAnalysis(t)) this.analyzeQueue.push(id); // older analyses stay visible until replaced
     if (t.probe) this.queueOnline(t);
     this.dirty.add(id);
   }
@@ -175,7 +187,7 @@ class Library extends EventEmitter {
     const ids = [];
     for (const t of this.tracks.values()) {
       const inDir = recursive ? (dir === '' || t.dir === dir || t.dir.startsWith(dir + path.sep)) : t.dir === dir;
-      if (inDir && (!t.probe || !t.analysis)) ids.push(t.id);
+      if (inDir && (!t.probe || needsAnalysis(t))) ids.push(t.id);
     }
     this.focusQueue = ids;
     this.pump();
@@ -186,7 +198,7 @@ class Library extends EventEmitter {
     const mk = (t, kind) => ({ id: t.id, path: t.path, kind, needProbe: !t.probe, minBpm: s.minBpm, maxBpm: s.maxBpm });
     while (this.focusQueue.length) {
       const t = this.tracks.get(this.focusQueue.shift());
-      if (t && !t.busy && !t.error && (!t.analysis || !t.probe)) return mk(t, 'analyze');
+      if (t && !t.busy && !t.error && (needsAnalysis(t) || !t.probe)) return mk(t, 'analyze');
     }
     while (this.probeIdx < this.probeQueue.length) {
       const t = this.tracks.get(this.probeQueue[this.probeIdx++]);
@@ -194,7 +206,7 @@ class Library extends EventEmitter {
     }
     while (this.analyzeIdx < this.analyzeQueue.length) {
       const t = this.tracks.get(this.analyzeQueue[this.analyzeIdx++]);
-      if (t && !t.busy && !t.analysis && !t.error) return mk(t, 'analyze');
+      if (t && !t.busy && needsAnalysis(t) && !t.error) return mk(t, 'analyze');
     }
     return null;
   }
@@ -252,7 +264,7 @@ class Library extends EventEmitter {
   }
 
   persist(t) {
-    this.cache.data[t.path] = { size: t.size, mtime: t.mtime, probe: t.probe, analysis: t.analysis, mini: t.mini, online: t.online, bpmMul: t.bpmMul };
+    this.cache.data[t.path] = { size: t.size, mtime: t.mtime, probe: t.probe, analysis: t.analysis, mini: t.mini, online: t.online, edit: t.edit };
     this.cache.save();
   }
 
@@ -313,22 +325,54 @@ class Library extends EventEmitter {
   }
 
   // ---------- renderer data ----------
-  // factor: 2, 0.5 or 'reset'
-  setBpmMul(ids, factor) {
+  // factor: 2, 0.5 or 'reset' (back to the detected BPM)
+  setBpm(ids, factor) {
     for (const id of ids) {
       const t = this.tracks.get(id);
-      if (!t) continue;
-      t.bpmMul = factor === 'reset' ? 1 : Math.min(4, Math.max(0.25, t.bpmMul * factor));
-      this.persist(t);
-      this.dirty.add(id);
+      const a = t && this.effectiveAnalysis(t);
+      if (!a) continue;
+      if (factor === 'reset') this.setGrid(id, { bpm: null });
+      else this.setGrid(id, { bpm: a.bpm * factor });
     }
   }
 
-  // analysis with the manual BPM correction applied (what the UI and exports show)
+  // patch: { bpm?: number|null, downbeat?: number|null, reset?: true }  (null = back to automatic)
+  setGrid(id, patch) {
+    const t = this.tracks.get(id);
+    if (!t || !t.analysis) return;
+    const e = patch.reset ? {} : { ...(t.edit || {}) };
+    if (patch.bpm !== undefined) {
+      if (patch.bpm == null || !(patch.bpm > 0)) delete e.bpm;
+      else e.bpm = round(Math.min(300, Math.max(30, patch.bpm)), 3);
+    }
+    if (patch.downbeat !== undefined) {
+      if (patch.downbeat == null) delete e.downbeat;
+      else e.downbeat = round(patch.downbeat, 4);
+    }
+    t.edit = Object.keys(e).length ? e : null;
+    this.persist(t);
+    this.dirty.add(id);
+  }
+
+  // analysis with manual corrections applied (what the UI and exports use).
+  // The grid is anchor + k * beat; bars start every 4 beats from the anchor.
   effectiveAnalysis(t) {
     const a = t.analysis;
-    if (!a || t.bpmMul === 1) return a;
-    return { ...a, bpm: Math.round(a.bpm * t.bpmMul * 100) / 100, bpmDetected: a.bpm };
+    if (!a) return a;
+    const e = t.edit || {};
+    const bpm = e.bpm || a.bpm;
+    const beat = 60 / bpm;
+    const anchor = e.downbeat != null ? e.downbeat : a.anchor != null ? a.anchor : a.downbeat != null ? a.downbeat : a.beatOffset || 0;
+    const mod = (x, m) => ((x % m) + m) % m;
+    return {
+      ...a,
+      bpm: round(bpm, 2),
+      anchor,
+      beatOffset: round(mod(anchor, beat), 4),
+      downbeat: round(mod(anchor, 4 * beat), 4),
+      bpmDetected: e.bpm ? a.bpm : undefined,
+      gridEdited: e.downbeat != null,
+    };
   }
 
   publicTrack(t) {
@@ -340,7 +384,7 @@ class Library extends EventEmitter {
     let probed = 0, analyzed = 0, errors = 0, busy = 0;
     for (const t of this.tracks.values()) {
       if (t.probe) probed++;
-      if (t.analysis) analyzed++;
+      if (!needsAnalysis(t)) analyzed++;
       if (t.error) errors++;
       if (t.busy) busy++;
     }

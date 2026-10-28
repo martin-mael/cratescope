@@ -2,6 +2,10 @@
 // Pure-JS DSP: waveform (3 bands), tempo (BPM + beat grid), musical key.
 // Input: mono Float32Array at SR Hz (decoded by ffmpeg).
 
+const { analyzeGrid } = require('./grid');
+
+// bump when the analysis output changes: cached results with an older version get re-analysed
+const ANALYSIS_VERSION = 2;
 const SR = 11025;
 const HOP = 64; // ~5.8 ms → 172 frames/s for onset detection
 const FPS = SR / HOP;
@@ -133,7 +137,7 @@ function waveform(bands, bins) {
 }
 
 // ---------- Onset envelope ----------
-function onsetEnvelope(bands) {
+function onsetEnvelope(bands, wl = 1.2, wm = 1, wh = 0.8) {
   const { low, mid, high, nFrames } = bands;
   const env = new Float32Array(nFrames);
   const L = new Float32Array(nFrames), M = new Float32Array(nFrames), H = new Float32Array(nFrames);
@@ -144,7 +148,7 @@ function onsetEnvelope(bands) {
   }
   for (let f = 2; f < nFrames; f++) {
     const dl = L[f] - L[f - 2], dm = M[f] - M[f - 2], dh = H[f] - H[f - 2];
-    env[f] = (dl > 0 ? dl : 0) * 1.2 + (dm > 0 ? dm : 0) + (dh > 0 ? dh : 0) * 0.8;
+    env[f] = (dl > 0 ? dl : 0) * wl + (dm > 0 ? dm : 0) * wm + (dh > 0 ? dh : 0) * wh;
   }
   // remove local mean (~0.4 s), half-wave rectify
   const w = Math.round(FPS * 0.2);
@@ -196,7 +200,9 @@ function combScore(env, period) {
   return { score: best / Math.max(1, nBeats), phase: bestPhase };
 }
 
-function tempo(env, minBpm = 88, maxBpm = 180) {
+// envBody: onset envelope without the high band (kick/snare); hi-hats on every 8th note
+// otherwise make 2/3 or 3/4 of the tempo look as good as the real one.
+function tempo(env, minBpm = 88, maxBpm = 180, envBody = env) {
   const lagFor = (bpm) => (FPS * 60) / bpm;
   const maxLag = Math.ceil(lagFor(minBpm) * 4) + 2;
   const ac = autocorr(env, maxLag);
@@ -215,10 +221,10 @@ function tempo(env, minBpm = 88, maxBpm = 180) {
   }
   // 2) metrical-level check: the ACF easily locks onto 2/3, 3/4 or 1/2 of the real tempo.
   //    Compare phase-aligned comb scores of related tempi; faster wins unless clearly worse.
-  const localBest = (center, span, stepB) => {
+  const localBest = (center, span, stepB, e = env) => {
     let bb = center, bs = -Infinity;
     for (let b = center - span; b <= center + span; b += stepB) {
-      const r = combScore(env, lagFor(b));
+      const r = combScore(e, lagFor(b));
       if (r.score > bs) { bs = r.score; bb = b; }
     }
     return { bpm: bb, score: bs };
@@ -226,18 +232,16 @@ function tempo(env, minBpm = 88, maxBpm = 180) {
   const cands = [];
   for (const r of [1, 2, 0.5, 1.5, 2 / 3, 4 / 3, 0.75]) {
     const b = best * r;
-    if (b >= minBpm - 0.5 && b <= maxBpm + 0.5) cands.push(localBest(b, 0.6, 0.1));
+    if (b < minBpm - 0.5 || b > maxBpm + 0.5) continue;
+    // a full-track comb is very sensitive to tempo error (0.05 BPM drifts ~70 ms over a track): refine first
+    const coarse = localBest(b, 0.6, 0.1, envBody);
+    cands.push(localBest(coarse.bpm, 0.1, 0.01, envBody));
   }
   cands.sort((a, b) => b.bpm - a.bpm); // fastest first
   let pick = cands[0];
   for (const c of cands) if (c.score > pick.score * 1.12) pick = c;
-  // 3) fine search with full-length comb
-  const fineR = localBest(pick.bpm, 0.15, 0.01);
-  let fine = fineR.bpm;
-  // snap near-integers (most produced music sits on whole BPMs)
-  const rounded = Math.round(fine);
-  if (Math.abs(fine - rounded) < 0.1) fine = rounded;
-  fine = Math.round(fine * 10) / 10;
+  // 3) fine search with full-length comb (the grid module refines it further)
+  const fine = localBest(pick.bpm, 0.15, 0.01).bpm;
   const fin = combScore(env, lagFor(fine));
   // confidence: peak prominence vs. median of the scan
   const scan = [];
@@ -245,7 +249,7 @@ function tempo(env, minBpm = 88, maxBpm = 180) {
   scan.sort((a, b) => a - b);
   const med = scan[scan.length >> 1];
   const conf = Math.max(0, Math.min(1, (bestS - med) / (Math.abs(bestS) + 1e-9)));
-  return { bpm: fine, beatOffset: fin.phase / FPS, confidence: Math.round(conf * 100) / 100 };
+  return { bpm: fine, phase: fin.phase, confidence: Math.round(conf * 100) / 100 };
 }
 
 // ---------- Key detection ----------
@@ -346,7 +350,8 @@ function energyScore(bands, env, lufs) {
 function analyze(pcm, { minBpm = 88, maxBpm = 180, lufs } = {}) {
   const bands = bandFrames(pcm);
   const env = onsetEnvelope(bands);
-  const t = tempo(env, minBpm, maxBpm);
+  const { bpm, phase, confidence } = tempo(env, minBpm, maxBpm, onsetEnvelope(bands, 1.2, 1, 0));
+  const grid = analyzeGrid(env, bands, FPS, bpm, phase);
   const k = detectKey(pcm);
   const duration = pcm.length / SR;
   const overview = waveform(bands, 1200);
@@ -354,7 +359,9 @@ function analyze(pcm, { minBpm = 88, maxBpm = 180, lufs } = {}) {
   const detailBins = Math.max(1, Math.round(duration * 50)); // 50 bins / s
   const detail = waveform(bands, detailBins);
   return {
-    ...t,
+    ...grid,
+    confidence,
+    version: ANALYSIS_VERSION,
     ...k,
     energy: energyScore(bands, env, lufs),
     duration,
@@ -362,5 +369,5 @@ function analyze(pcm, { minBpm = 88, maxBpm = 180, lufs } = {}) {
   };
 }
 
-module.exports = { analyze, SR, camelot, NOTES };
+module.exports = { analyze, SR, FPS, camelot, NOTES, ANALYSIS_VERSION };
 module.exports._internals = { chromagram, pearson, bandFrames, onsetEnvelope, tempo };

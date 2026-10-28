@@ -117,7 +117,8 @@ ipcMain.on('library:focus', (_e, { dir, recursive }) => library.focus(dir, recur
 ipcMain.on('library:reanalyze', (_e, ids) => library.reanalyze(ids));
 ipcMain.on('library:reanalyzeStale', () => library.reanalyzeStale());
 ipcMain.on('library:refetch', (_e, ids) => library.refetchOnline(ids));
-ipcMain.on('library:bpm', (_e, { ids, factor }) => library.setBpmMul(ids, factor));
+ipcMain.on('library:bpm', (_e, { ids, factor }) => library.setBpm(ids, factor));
+ipcMain.on('library:grid', (_e, { id, patch }) => library.setGrid(id, patch));
 
 ipcMain.handle('track:waves', (_e, id) => library.readWaves(id));
 
@@ -158,9 +159,9 @@ ipcMain.on('track:context', (e, ids) => {
     { label: 'Copier le chemin', click: () => clipboard.writeText(tracks.map((t) => t.path).join('\n')) },
     { type: 'separator' },
     { label: tracks.length > 1 ? `Ré-analyser (${tracks.length})` : 'Ré-analyser', click: () => library.reanalyze(tracks.map((t) => t.id)) },
-    { label: 'BPM ×2   ( * )', click: () => library.setBpmMul(tracks.map((t) => t.id), 2) },
-    { label: 'BPM ÷2   ( / )', click: () => library.setBpmMul(tracks.map((t) => t.id), 0.5) },
-    { label: 'BPM détecté (annuler ×2 / ÷2)', enabled: tracks.some((t) => t.bpmMul !== 1), click: () => library.setBpmMul(tracks.map((t) => t.id), 'reset') },
+    { label: 'BPM ×2   ( * )', click: () => library.setBpm(tracks.map((t) => t.id), 2) },
+    { label: 'BPM ÷2   ( / )', click: () => library.setBpm(tracks.map((t) => t.id), 0.5) },
+    { label: 'Grille automatique (annuler BPM et calage manuels)', enabled: tracks.some((t) => t.edit), click: () => tracks.forEach((t) => library.setGrid(t.id, { reset: true })) },
     { type: 'separator' },
     { label: 'Re-chercher les métadonnées en ligne', click: () => library.refetchOnline(tracks.map((t) => t.id)) },
     { type: 'separator' },

@@ -59,14 +59,26 @@
     drawBands(ctx, data, 0, w, h, 0, data.length / 4, { gain: 1 });
   }
 
+  const SECTION_COLORS = { drop: '#ff9a1f', break: '#2fb5ff' };
+
   function drawOverview(canvas, data, progress, opts = {}) {
-    const { ctx, w, h } = fit(canvas);
+    const { ctx, w, h, dpr } = fit(canvas);
     ctx.clearRect(0, 0, w, h);
     if (!data) return;
     drawBands(ctx, data, 0, w, h, 0, data.length / 4);
     const px = Math.round(progress * w);
     ctx.fillStyle = 'rgba(8,9,11,0.55)';
     ctx.fillRect(0, 0, px, h); // played part dimmed
+    // sections: small flags on top
+    const a = opts.analysis, dur = opts.duration;
+    if (a && a.sections && dur) {
+      for (const s of a.sections) {
+        const x = Math.round((s.t / dur) * w);
+        ctx.fillStyle = SECTION_COLORS[s.type] || '#fff';
+        ctx.beginPath(); ctx.moveTo(x - 4 * dpr, 0); ctx.lineTo(x + 4 * dpr, 0); ctx.lineTo(x, 6 * dpr); ctx.fill();
+        ctx.globalAlpha = 0.35; ctx.fillRect(x, 0, dpr, h); ctx.globalAlpha = 1;
+      }
+    }
     if (opts.window) {
       ctx.strokeStyle = 'rgba(255,255,255,0.25)';
       ctx.lineWidth = 1;
@@ -76,29 +88,55 @@
     ctx.fillRect(px - 1, 0, 2, h);
   }
 
-  // detail: 50 bins / s. Centered playhead, scrolling. Beat grid from bpm + beatOffset.
+  // detail: 50 bins / s. Centered playhead, scrolling. Grid = anchor + k * beat, bars from `downbeat`,
+  // phrase lines every 16 bars from the anchor (the main drop when one was found).
   function drawZoom(canvas, data, time, secondsVisible, a) {
     const { ctx, w, h, dpr } = fit(canvas);
     ctx.clearRect(0, 0, w, h);
     if (!data) return;
     const rate = 50;
-    const from = (time - secondsVisible / 2) * rate;
-    const to = (time + secondsVisible / 2) * rate;
+    const t0 = time - secondsVisible / 2, t1 = time + secondsVisible / 2;
+    const xOf = (t) => Math.round(((t - t0) / secondsVisible) * w);
     if (a && a.bpm) {
       const beat = 60 / a.bpm;
-      const t0 = time - secondsVisible / 2;
-      let k = Math.ceil((t0 - a.beatOffset) / beat);
-      for (; ; k++) {
+      const pxPerBeat = (beat / secondsVisible) * w;
+      ctx.font = `${10 * dpr}px -apple-system, sans-serif`;
+      for (let k = Math.ceil((t0 - a.beatOffset) / beat); ; k++) {
         const bt = a.beatOffset + k * beat;
-        if (bt > time + secondsVisible / 2) break;
-        const x = Math.round(((bt - t0) / secondsVisible) * w);
-        const bar = ((k % 4) + 4) % 4 === 0;
-        ctx.fillStyle = bar ? 'rgba(255,59,77,0.55)' : 'rgba(255,255,255,0.13)';
-        ctx.fillRect(x, 0, bar ? 2 * dpr : dpr, bar ? h : h * 0.12);
-        if (!bar) ctx.fillRect(x, h - h * 0.12, dpr, h * 0.12);
+        if (bt > t1) break;
+        if (bt < 0) continue;
+        const x = xOf(bt);
+        const n = Math.round((bt - a.downbeat) / beat);
+        const bar = ((n % 4) + 4) % 4 === 0;
+        const phrase = bar && ((Math.round((bt - a.anchor) / beat) % 64) + 64) % 64 === 0;
+        if (bar) {
+          ctx.fillStyle = phrase ? 'rgba(255,214,0,0.85)' : 'rgba(255,59,77,0.6)';
+          ctx.fillRect(x - (phrase ? dpr : 0), 0, (phrase ? 3 : 2) * dpr, h);
+          if (pxPerBeat * 4 > 34 * dpr) {
+            ctx.fillStyle = phrase ? '#ffd600' : 'rgba(255,120,130,0.9)';
+            ctx.fillText(String(n / 4 + 1), x + 3 * dpr, h - 4 * dpr);
+          }
+        } else {
+          ctx.fillStyle = 'rgba(255,255,255,0.16)';
+          ctx.fillRect(x, 0, dpr, h * 0.12);
+          ctx.fillRect(x, h - h * 0.12, dpr, h * 0.12);
+        }
       }
     }
-    drawBands(ctx, data, 0, w, h, from, to);
+    drawBands(ctx, data, 0, w, h, t0 * rate, t1 * rate);
+    if (a && a.sections) {
+      ctx.font = `bold ${10 * dpr}px -apple-system, sans-serif`;
+      for (const s of a.sections) {
+        if (s.t < t0 - 1 || s.t > t1) continue;
+        const x = xOf(s.t);
+        const label = s.type === 'drop' ? 'DROP' : 'BREAK';
+        ctx.fillStyle = SECTION_COLORS[s.type];
+        const tw = ctx.measureText(label).width + 8 * dpr;
+        ctx.fillRect(x, 0, tw, 14 * dpr);
+        ctx.fillStyle = '#111';
+        ctx.fillText(label, x + 4 * dpr, 11 * dpr);
+      }
+    }
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(Math.round(w / 2) - dpr, 0, 2 * dpr, h);
   }

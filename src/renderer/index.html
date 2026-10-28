@@ -39,7 +39,7 @@
         <div id="dTitle" class="d-title">Aucun titre chargé</div>
         <div id="dArtist" class="d-artist">Ouvre un dossier puis sélectionne un morceau</div>
         <div class="d-stats">
-          <div class="stat bpm-stat"><span>BPM</span><b id="dBpm">–</b>
+          <div class="stat bpm-stat"><span>BPM</span><b id="dBpm" title="Cliquer pour saisir le BPM">–</b><input id="bpmInput" class="bpm-input hidden" type="text" inputmode="decimal" />
             <div class="bpm-fix"><button id="bpmHalf" title="Diviser le BPM par 2 ( / )">÷2</button><button id="bpmDouble" title="Multiplier le BPM par 2 ( * )">×2</button></div>
           </div>
           <div class="stat"><span>Tonalité</span><b id="dKey">–</b></div>
@@ -58,6 +58,17 @@
         <span id="tPos" class="time">0:00</span>
         <span class="time dim">/</span>
         <span id="tDur" class="time dim">0:00</span>
+        <div class="grid-tools">
+          <span class="gt-label">Grille</span>
+          <button id="gBarPrev" title="Le 1er temps de la mesure recule d'un temps  ( [ )">⇤ 1</button>
+          <button id="gNudgeL" title="Décaler toute la grille de −5 ms  ( , )   ·  Alt : −1 ms">‹</button>
+          <button id="gNudgeR" title="Décaler toute la grille de +5 ms  ( . )   ·  Alt : +1 ms">›</button>
+          <button id="gBarNext" title="Le 1er temps de la mesure avance d'un temps  ( ] )">1 ⇥</button>
+          <button id="gBarHere" title="Le temps le plus proche de la tête de lecture devient le 1er temps d'une mesure  ( G )">1 ici</button>
+          <button id="gSnapHere" title="Caler la grille exactement sur la tête de lecture, qui devient un 1er temps  ( ⇧G )">Caler ici</button>
+          <button id="gAuto" title="Revenir à la grille et au BPM détectés">Auto</button>
+          <button id="gClick" title="Clic métronome sur la grille, aigu sur le 1er temps  ( C )">♩ Clic</button>
+        </div>
         <div class="spacer"></div>
         <label class="zoom-ctl">Zoom <input id="zoom" type="range" min="2" max="30" value="8" /></label>
         <label class="zoom-ctl">Vol <input id="volume" type="range" min="0" max="1" step="0.01" value="0.9" /></label>
