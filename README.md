@@ -1,6 +1,6 @@
 # CrateScope
 
-Analyseur de bibliothèque musicale façon Rekordbox (Electron + ffmpeg) : BPM, tonalité (Camelot), waveform 3 bandes, loudness (LUFS), énergie, plus genre / style / label / année récupérés en ligne.
+Analyseur de bibliothèque musicale façon Rekordbox (Electron + ffmpeg) : BPM, tonalité (Camelot), waveform 3 bandes, loudness (LUFS), plus genre / style / label / année récupérés en ligne.
 
 ## Lancer
 
@@ -21,7 +21,7 @@ npm start -- ~/Music/Crate     # ouvre directement un dossier
   - waveforms (mini, vue d'ensemble, détaillée à 50 points/s) en 3 bandes.
   Le dossier en cours d'affichage est analysé en priorité. Résultats en cache (`~/Library/Application Support/cratescope`), donc les réouvertures sont instantanées.
 - **Métadonnées en ligne** : MusicBrainz (sans clé) et Discogs (token perso gratuit, donne genre **et** style, label, pochette). À configurer dans ⚙︎.
-- Plage de BPM réglable (88–180 par défaut) : les tempos sont ramenés dans cette plage.
+- Plage de BPM réglable (88–180 par défaut) : les tempos sont ramenés dans cette plage. Avec une plage large (ex. 80–220), entre un tempo et son double c'est le plus proche de ~140 BPM qui l'emporte, sauf si l'autre est nettement plus marqué.
 
 ## Utilisation
 

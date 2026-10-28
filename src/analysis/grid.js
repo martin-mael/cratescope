@@ -195,9 +195,13 @@ function detectSections(F, firstDownbeat) {
   return kept.slice(0, 8).sort((x, y) => x.bar - y.bar);
 }
 
-function analyzeGrid(env, bands, fps, bpmEstimate, phaseEstimate) {
+function analyzeGrid(env, bands, fps, bpmEstimate, phaseEstimate, minBpm = 0, maxBpm = Infinity) {
   const fit = fitGrid(env, (fps * 60) / bpmEstimate, phaseEstimate);
   const snapped = snapTempo(fit, fps);
+  // beat tracking can settle on another metrical level than the estimate: fold back into the range
+  // (doubling keeps every tracked beat on the grid; halving keeps every other one)
+  while (snapped.bpm < minBpm && snapped.bpm * 2 <= maxBpm) { snapped.bpm *= 2; snapped.period /= 2; }
+  while (snapped.bpm > maxBpm && snapped.bpm / 2 >= minBpm) { snapped.bpm /= 2; snapped.period *= 2; }
   const { period } = snapped;
   // first beat inside the track (phase can be anywhere after the regression)
   // first beat at or after the (latency-corrected) start of the track
@@ -225,7 +229,7 @@ function analyzeGrid(env, bands, fps, bpmEstimate, phaseEstimate) {
     tempoStable: st.stable,
     gridRmsMs: st.rmsMs,
     gridDriftMs: st.driftMs,
-    sections: sections.map((s) => ({ t: Math.round(beatTime(s.beat) * 1000) / 1000, bar: s.bar + 1, type: s.type })),
+    sections: sections.map((s) => ({ t: Math.round(beatTime(s.beat) * 1000) / 1000, bar: s.bar + 1, type: s.type, strength: Math.round(s.strength * 100) / 100 })),
     mainDrop: mainDrop ? Math.round(beatTime(mainDrop.beat) * 1000) / 1000 : null,
   };
 }

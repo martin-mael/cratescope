@@ -179,10 +179,10 @@ ipcMain.handle('export', async (_e, { format, ids }) => {
   if (r.canceled || !r.filePath) return false;
   if (format === 'csv') {
     const q = (v) => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
-    const head = ['Path', 'Artist', 'Title', 'BPM', 'Key', 'Camelot', 'Energy', 'LUFS', 'Duration', 'Genre', 'Style', 'Year', 'Label'];
+    const head = ['Path', 'Artist', 'Title', 'BPM', 'Key', 'Camelot', 'LUFS', 'Duration', 'Genre', 'Style', 'Year', 'Label'];
     const rows = tracks.map((t) => {
       const tg = (t.probe && t.probe.tags) || {}, a = library.effectiveAnalysis(t) || {}, o = t.online || {};
-      return [t.path, tg.artist || t.parsed.artist, tg.title || t.parsed.title, a.bpm, a.key, a.camelot, a.energy, a.lufs,
+      return [t.path, tg.artist || t.parsed.artist, tg.title || t.parsed.title, a.bpm, a.key, a.camelot, a.lufs,
         a.duration ? a.duration.toFixed(1) : '', [tg.genre, ...(o.genres || [])].filter(Boolean).join('; '),
         (o.styles || []).join('; '), tg.year || o.year, tg.label || o.label].map(q).join(',');
     });

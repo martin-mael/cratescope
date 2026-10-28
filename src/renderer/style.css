@@ -10,7 +10,7 @@
   --accent2: #ff9f1c;
   --sel: #1d3b52;
   --row: 34px;
-  --cols: 18px 136px minmax(160px, 2fr) minmax(120px, 1.4fr) 62px 62px 52px 58px minmax(110px, 1fr) minmax(120px, 1.2fr) 58px 52px minmax(90px, 0.9fr) 92px;
+  --cols: 18px 136px minmax(160px, 2fr) minmax(120px, 1.4fr) 62px 62px 58px minmax(110px, 1fr) minmax(120px, 1.2fr) 58px 52px minmax(90px, 0.9fr) 92px;
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
@@ -55,8 +55,10 @@ body:not(.platform-darwin) .input.search { width: 200px; }
 .cover img { width: 100%; height: 100%; object-fit: cover; display: none; position: relative; z-index: 1; }
 .cover img.ok { display: block; }
 .cover-ph { position: absolute; inset: 0; display: grid; place-items: center; font-size: 46px; color: var(--faint); }
-.deck-info { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 6px; }
-.d-title { font-size: 17px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.deck-info { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 6px; min-height: 0; overflow: hidden; }
+/* title, artist and stats never shrink: chips and meta give up space instead */
+.d-title, .d-artist, .d-stats { flex-shrink: 0; }
+.d-title { font-size: 17px; line-height: 1.3; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .d-artist { color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .d-stats { display: flex; gap: 6px; margin-top: 2px; }
 .stat { background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; min-width: 62px; white-space: nowrap; }
@@ -76,11 +78,11 @@ body:not(.platform-darwin) .input.search { width: 200px; }
 .grid-warn { color: var(--accent2); }
 .stat > span { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: .6px; color: var(--faint); }
 .stat b { white-space: nowrap; font-size: 16px; font-variant-numeric: tabular-nums; }
-.chips { display: flex; flex-wrap: wrap; gap: 4px; max-height: 46px; overflow: hidden; }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; max-height: 44px; overflow: hidden; flex-shrink: 0; }
 .chip { font-size: 11px; padding: 2px 7px; border-radius: 10px; background: #1f2a36; color: #9fd3ff; border: 1px solid #284055; }
 .chip.style { background: #2e2416; color: #ffc67a; border-color: #4b3920; }
 .chip.tag { background: #22252b; color: var(--dim); border-color: var(--line); }
-.d-meta { font-size: 11.5px; color: var(--faint); line-height: 1.5; overflow: hidden; }
+.d-meta { font-size: 11.5px; color: var(--faint); line-height: 1.5; overflow-y: auto; flex: 1; min-height: 0; }
 .d-meta a { color: var(--accent); text-decoration: none; cursor: pointer; }
 .deck-right { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
 .zoom-wave { width: 100%; height: 118px; background: #08090b; border-radius: 6px; border: 1px solid var(--line); cursor: grab; }
@@ -125,7 +127,7 @@ body:not(.platform-darwin) .input.search { width: 200px; }
 .trow .c-title { font-weight: 550; }
 .trow .c-artist, .trow .c-genre, .trow .c-label, .trow .c-year, .trow .c-time, .trow .c-fmt { color: var(--dim); }
 .trow .c-style { color: #d8b37a; }
-.trow .c-bpm, .trow .c-lufs, .trow .c-energy, .trow .c-time { font-variant-numeric: tabular-nums; text-align: right; }
+.trow .c-bpm, .trow .c-lufs, .trow .c-time { font-variant-numeric: tabular-nums; text-align: right; }
 .trow .c-fmt { font-size: 11px; }
 .trow canvas { width: 136px; height: 26px; display: block; cursor: pointer; }
 .key { display: inline-block; min-width: 34px; text-align: center; padding: 1px 5px; border-radius: 4px; font-weight: 650; font-size: 12px; color: #0b0b0b; }
@@ -136,7 +138,6 @@ body:not(.platform-darwin) .input.search { width: 200px; }
 .dot.error { background: #ff4d5e; }
 .dot.pending { background: #333944; }
 @keyframes pulse { from { opacity: .4 } to { opacity: 1 } }
-.energy-bar { display: inline-block; height: 6px; border-radius: 3px; background: linear-gradient(90deg, #2fb5ff, #ff9f1c, #ff4d5e); vertical-align: middle; margin-right: 4px; }
 .bpm-tag-diff { color: var(--accent2); font-size: 10px; margin-left: 2px; }
 
 .empty-state { position: absolute; inset: 28px 0 0; display: flex; flex-direction: column; gap: 10px; align-items: center; justify-content: center; color: var(--dim); text-align: center; padding: 40px; }

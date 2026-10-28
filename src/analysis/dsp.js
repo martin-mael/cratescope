@@ -5,7 +5,7 @@
 const { analyzeGrid } = require('./grid');
 
 // bump when the analysis output changes: cached results with an older version get re-analysed
-const ANALYSIS_VERSION = 2;
+const ANALYSIS_VERSION = 5;
 const SR = 11025;
 const HOP = 64; // ~5.8 ms → 172 frames/s for onset detection
 const FPS = SR / HOP;
@@ -240,6 +240,16 @@ function tempo(env, minBpm = 88, maxBpm = 180, envBody = env) {
   cands.sort((a, b) => b.bpm - a.bpm); // fastest first
   let pick = cands[0];
   for (const c of cands) if (c.score > pick.score * 1.12) pick = c;
+  // With a wide BPM range both 80 and 160 can be valid: breakbeats often score better at half tempo
+  // (kick + snare every other beat). Between a tempo and its double / half only, a soft prior
+  // around 140 BPM (log scale) settles the octave: the slower reading must be clearly stronger.
+  const prior = (bpm) => Math.exp(-0.5 * (Math.log2(bpm / 140) / 0.6) ** 2);
+  for (const m of [2, 0.5]) {
+    const b = pick.bpm * m;
+    if (b < minBpm - 0.5 || b > maxBpm + 0.5) continue;
+    const c = localBest(localBest(b, 0.3, 0.05, envBody).bpm, 0.06, 0.01, envBody);
+    if (c.score * prior(c.bpm) > pick.score * prior(pick.bpm)) pick = c;
+  }
   // 3) fine search with full-length comb (the grid module refines it further)
   const fine = localBest(pick.bpm, 0.15, 0.01).bpm;
   const fin = combScore(env, lagFor(fine));
@@ -333,25 +343,11 @@ function detectKey(pcm) {
   };
 }
 
-// ---------- Energy (1-10 heuristic) ----------
-function energyScore(bands, env, lufs) {
-  const { high, low, mid, nFrames } = bands;
-  let h = 0, t = 0;
-  for (let f = 0; f < nFrames; f++) { h += high[f]; t += low[f] + mid[f] + high[f]; }
-  const brightness = t > 0 ? h / t : 0; // 0..1
-  let on = 0;
-  for (let f = 0; f < env.length; f++) on += env[f];
-  const density = on / Math.max(1, env.length); // onset strength per frame
-  const loud = lufs == null ? 0.5 : Math.min(1, Math.max(0, (lufs + 20) / 14)); // -20..-6 LUFS
-  const s = 0.5 * loud + 0.3 * Math.min(1, density / 0.6) + 0.2 * Math.min(1, brightness * 6);
-  return Math.max(1, Math.min(10, Math.round(1 + s * 9)));
-}
-
 function analyze(pcm, { minBpm = 88, maxBpm = 180, lufs } = {}) {
   const bands = bandFrames(pcm);
   const env = onsetEnvelope(bands);
   const { bpm, phase, confidence } = tempo(env, minBpm, maxBpm, onsetEnvelope(bands, 1.2, 1, 0));
-  const grid = analyzeGrid(env, bands, FPS, bpm, phase);
+  const grid = analyzeGrid(env, bands, FPS, bpm, phase, minBpm, maxBpm);
   const k = detectKey(pcm);
   const duration = pcm.length / SR;
   const overview = waveform(bands, 1200);
@@ -363,7 +359,6 @@ function analyze(pcm, { minBpm = 88, maxBpm = 180, lufs } = {}) {
     confidence,
     version: ANALYSIS_VERSION,
     ...k,
-    energy: energyScore(bands, env, lufs),
     duration,
     waves: { mini, overview, detail },
   };

@@ -68,7 +68,6 @@ const COLS = [
   { key: 'artist', label: 'Artiste', sort: (t) => fArtist(t).toLowerCase() },
   { key: 'bpm', label: 'BPM', sort: (t) => (t.analysis ? t.analysis.bpm : 1e9) },
   { key: 'key', label: 'Key', sort: (t) => camSort(t.analysis && t.analysis.camelot) },
-  { key: 'energy', label: 'Énergie', sort: (t) => (t.analysis ? t.analysis.energy : -1) },
   { key: 'lufs', label: 'LUFS', sort: (t) => (t.analysis && t.analysis.lufs != null ? t.analysis.lufs : -99) },
   { key: 'genre', label: 'Genre', sort: (t) => (fGenres(t)[0] || '~').toLowerCase() },
   { key: 'style', label: 'Style', sort: (t) => (fStyles(t)[0] || '~').toLowerCase() },
@@ -159,7 +158,6 @@ function rowHtml(t) {
 <div class="c-artist">${esc(fArtist(t))}</div>
 <div class="c-bpm${a && a.bpmDetected ? ' bpm-fixed' : ''}"${a && a.bpmDetected ? ` title="Détecté : ${fmtBpm(a.bpmDetected)}"` : ''}>${a ? fmtBpm(a.bpm) : ''}${diff ? `<span class="bpm-tag-diff" title="Tag du fichier : ${tagBpm}">*</span>` : ''}</div>
 <div class="c-key">${a ? `<span class="key" style="background:${keyColor(a.camelot)}">${a.camelot}</span><span class="key-name">${a.key}</span>` : ''}</div>
-<div class="c-energy">${a ? `<span class="energy-bar" style="width:${a.energy * 2.2}px"></span>${a.energy}` : ''}</div>
 <div class="c-lufs">${a && a.lufs != null ? a.lufs.toFixed(1) : ''}</div>
 <div class="c-genre">${esc(fGenres(t).join(', '))}${t.onlinePending && !fGenres(t).length ? '<span class="dim">…</span>' : ''}</div>
 <div class="c-style">${esc(fStyles(t).join(', '))}</div>
@@ -379,7 +377,6 @@ function renderDeckInfo(t) {
   $('dBpm').title = (a.bpmDetected ? `Corrigé à la main (détecté : ${fmtBpm(a.bpmDetected)}). ` : '') + 'Cliquer pour saisir le BPM';
   $('gAuto').classList.toggle('edited', !!t.edit);
   $('dKey').innerHTML = a.camelot ? `<span class="key" style="background:${keyColor(a.camelot)}">${a.camelot}</span> <span class="key-name">${a.key}</span>` : '…';
-  $('dEnergy').textContent = a.energy || '…';
   $('dLufs').textContent = a.lufs != null ? a.lufs.toFixed(1) : '…';
   const chips = [
     ...fGenres(t).map((g) => `<span class="chip">${esc(g)}</span>`),
@@ -389,6 +386,7 @@ function renderDeckInfo(t) {
   if (!chips.length && t.onlinePending) chips.push('<span class="chip tag">recherche en ligne…</span>');
   if (!chips.length && o.notFound) chips.push('<span class="chip tag">introuvable en ligne</span>');
   $('dChips').innerHTML = chips.join('');
+  $('dChips').title = [...fGenres(t), ...fStyles(t)].join(', '); // full list when chips are clipped
   const meta = [];
   const yl = [fYear(t), fLabel(t), o.country].filter(Boolean).join(' · ');
   if (yl) meta.push(yl);
