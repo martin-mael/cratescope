@@ -676,7 +676,7 @@ function updateStats(s) {
 async function openSettings() {
   const s = state.settings = await api.getSettings();
   $('sMin').value = s.minBpm; $('sMax').value = s.maxBpm; $('sConc').value = s.concurrency;
-  $('sAuto').checked = s.autoOnline; $('sMb').checked = s.useMusicBrainz; $('sDiscogs').value = s.discogsToken || '';
+  $('sAuto').checked = s.autoOnline; $('sMb').checked = s.useMusicBrainz; $('sDg').checked = s.useDiscogs !== false; $('sDiscogs').value = s.discogsToken || ''; $('sDgKey').value = s.discogsKey || ''; $('sDgSecret').value = s.discogsSecret || '';
   $('settingsDlg').showModal();
 }
 $('btnSettings').addEventListener('click', openSettings);
@@ -687,7 +687,7 @@ $('settingsDlg').addEventListener('close', async () => {
   const min = Math.max(40, +$('sMin').value || 88), max = Math.max(min * 1.9, +$('sMax').value || 180);
   state.settings = await api.setSettings({
     minBpm: min, maxBpm: Math.round(max), concurrency: Math.max(1, Math.min(16, +$('sConc').value || 4)),
-    autoOnline: $('sAuto').checked, useMusicBrainz: $('sMb').checked, discogsToken: $('sDiscogs').value.trim(),
+    autoOnline: $('sAuto').checked, useMusicBrainz: $('sMb').checked, useDiscogs: $('sDg').checked, discogsToken: $('sDiscogs').value.trim(), discogsKey: $('sDgKey').value.trim(), discogsSecret: $('sDgSecret').value.trim(),
   });
 });
 

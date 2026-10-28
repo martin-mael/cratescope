@@ -20,7 +20,7 @@ npm start -- ~/Music/Crate     # ouvre directement un dossier
   - tonalité : chromagramme blanchi, accent sur la basse, profils de Sha'ath (libKeyFinder) → notation Camelot ;
   - waveforms (mini, vue d'ensemble, détaillée à 50 points/s) en 3 bandes.
   Le dossier en cours d'affichage est analysé en priorité. Résultats en cache (`~/Library/Application Support/cratescope`), donc les réouvertures sont instantanées.
-- **Métadonnées en ligne** : MusicBrainz (sans clé) et Discogs (token perso gratuit, donne genre **et** style, label, pochette). À configurer dans ⚙︎.
+- **Métadonnées en ligne** : MusicBrainz et Discogs, sans clé (Discogs donne genre **et** style, label, année). Facultatif dans ⚙︎ : un token personnel Discogs, ou la Consumer Key + Consumer Secret d'une application Discogs, ajoute les pochettes et accélère la recherche (60 titres/min au lieu de 25). Les titres déjà traités sont complétés automatiquement quand Discogs est activé ou qu'une clé est ajoutée.
 - Plage de BPM réglable (88–180 par défaut) : les tempos sont ramenés dans cette plage. Avec une plage large (ex. 80–220), entre un tempo et son double c'est le plus proche de ~140 BPM qui l'emporte, sauf si l'autre est nettement plus marqué.
 
 ## Utilisation

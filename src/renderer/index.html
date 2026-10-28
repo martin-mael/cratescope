@@ -115,10 +115,14 @@
         <legend>Métadonnées en ligne</legend>
         <label class="toggle"><input id="sAuto" type="checkbox" /> Rechercher automatiquement genre / style / label</label>
         <label class="toggle"><input id="sMb" type="checkbox" /> MusicBrainz (gratuit, sans clé)</label>
-        <label>Token Discogs (genre + style très précis)
-          <input id="sDiscogs" class="input wide" type="password" placeholder="Colle ton token personnel" />
+        <label class="toggle"><input id="sDg" type="checkbox" /> Discogs (gratuit, sans clé : genre <b>et</b> style très précis)</label>
+        <p class="hint">Facultatif : une clé ajoute les pochettes Discogs et accélère la recherche (60 titres/min au lieu de 25). Sur <a href="#" id="discogsLink">discogs.com/settings/developers</a>, au choix « Generate new token », ou crée une application et copie sa Consumer Key + Consumer Secret.</p>
+        <label>Token personnel Discogs
+          <input id="sDiscogs" class="input wide" type="password" placeholder="Token personnel (optionnel si Consumer Key + Secret)" autocomplete="off" />
         </label>
-        <p class="hint">Crée un token gratuit sur <a href="#" id="discogsLink">discogs.com/settings/developers</a> → « Generate new token ».</p>
+        <label>… ou Consumer Key + Consumer Secret d'une application
+          <span class="row-inline"><input id="sDgKey" class="input wide" type="text" placeholder="Consumer Key" autocomplete="off" /><input id="sDgSecret" class="input wide" type="password" placeholder="Consumer Secret" autocomplete="off" /></span>
+        </label>
       </fieldset>
       <div class="dlg-actions">
         <button value="cancel" class="btn">Annuler</button>

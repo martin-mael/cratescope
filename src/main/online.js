@@ -1,5 +1,16 @@
 'use strict';
-// Online metadata enrichment: MusicBrainz (no key) + Discogs (personal token, gives genre AND style).
+// Online metadata enrichment: MusicBrainz (no key) + Discogs (gives genre AND style).
+// Discogs accepts a personal access token, or an application's consumer key + secret (enough for search).
+// In Electron use Chromium's network stack (browser-like, the same one the app's pages use);
+// plain fetch when run from Node (scripts / tests).
+const httpFetch = (() => {
+  try {
+    const { net } = require('electron');
+    if (net && typeof net.fetch === 'function') return net.fetch.bind(net);
+  } catch {}
+  return fetch;
+})();
+
 const UA = 'CrateScope/0.1 (local DJ library analyser)';
 
 class RateLimited {
@@ -20,7 +31,8 @@ const mbLimiter = new RateLimited(1100);
 const dgLimiter = new RateLimited(1100);
 
 async function getJson(url, headers = {}, attempt = 0) {
-  const res = await fetch(url, { headers: { 'User-Agent': UA, Accept: 'application/json', ...headers } });
+  // a slow answer (Discogs sometimes takes 20 s+) must not stall the serialized queue
+  const res = await httpFetch(url, { headers: { 'User-Agent': UA, Accept: 'application/json', ...headers }, signal: AbortSignal.timeout(15000) });
   if ((res.status === 503 || res.status === 429) && attempt < 3) {
     await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
     return getJson(url, headers, attempt + 1);
@@ -62,13 +74,22 @@ async function musicbrainz(artist, title) {
   };
 }
 
-async function discogs(artist, title, token) {
-  if (!token) return null;
+// Discogs search works without credentials (25 requests/min, no cover images). A personal token
+// or an application's consumer key + secret raises that to 60/min and returns covers.
+function discogsAuth(s) {
+  if (s.discogsToken) return { Authorization: `Discogs token=${s.discogsToken}` };
+  if (s.discogsKey && s.discogsSecret) return { Authorization: `Discogs key=${s.discogsKey}, secret=${s.discogsSecret}` };
+  return null;
+}
+
+async function discogs(artist, title, settings) {
+  const auth = discogsAuth(settings);
+  dgLimiter.interval = auth ? 1100 : 2500;
+  const headers = auth || {};
   const base = 'https://api.discogs.com/database/search?type=release&per_page=5';
-  const auth = { Authorization: `Discogs token=${token}` };
-  let j = await dgLimiter.run(() => getJson(`${base}&artist=${encodeURIComponent(artist || '')}&track=${encodeURIComponent(title)}`, auth));
+  let j = await dgLimiter.run(() => getJson(`${base}&artist=${encodeURIComponent(artist || '')}&track=${encodeURIComponent(title)}`, headers));
   if (!j.results || !j.results.length) {
-    j = await dgLimiter.run(() => getJson(`${base}&q=${encodeURIComponent(`${artist || ''} ${title}`.trim())}`, auth));
+    j = await dgLimiter.run(() => getJson(`${base}&q=${encodeURIComponent(`${artist || ''} ${title}`.trim())}`, headers));
   }
   const r = (j.results || [])[0];
   if (!r) return null;
@@ -86,31 +107,61 @@ async function discogs(artist, title, token) {
 const uniq = (a) => [...new Set(a.filter(Boolean).map((s) => s.trim()))];
 const title = (s) => s.replace(/\b\w/g, (c) => c.toUpperCase());
 
-async function lookup({ artist, title: t }, settings) {
-  if (!t) return { notFound: true, fetchedAt: Date.now() };
-  const [mb, dg] = await Promise.all([
-    settings.useMusicBrainz ? musicbrainz(artist, t).catch((e) => ({ error: e.message })) : null,
-    settings.discogsToken ? discogs(artist, t, settings.discogsToken).catch((e) => ({ error: e.message })) : null,
-  ]);
-  const ok = (x) => x && !x.error;
-  if (!ok(mb) && !ok(dg)) {
-    const err = (mb && mb.error) || (dg && dg.error);
-    return err ? { error: err, fetchedAt: Date.now() } : { notFound: true, fetchedAt: Date.now() };
-  }
-  const m = ok(mb) ? mb : {}, d = ok(dg) ? dg : {};
+// newer result first, earlier one fills the gaps
+function merge(prev, next) {
   return {
-    genres: uniq([...(d.genres || []), ...(m.genres || []).map(title)]).slice(0, 6),
-    styles: uniq([...(d.styles || []), ...(m.tags || []).map(title)]).slice(0, 8),
-    year: d.year || m.year || null,
-    label: d.label || null,
-    country: d.country || null,
-    album: m.album || null,
-    coverUrl: d.coverUrl || m.coverUrl || null,
-    discogsUrl: d.discogsUrl || null,
-    mbUrl: m.mbUrl || null,
-    sources: [ok(dg) && 'Discogs', ok(mb) && 'MusicBrainz'].filter(Boolean),
-    fetchedAt: Date.now(),
+    genres: uniq([...(next.genres || []), ...(prev.genres || [])]).slice(0, 6),
+    styles: uniq([...(next.styles || []), ...(prev.styles || [])]).slice(0, 8),
+    year: next.year || prev.year || null,
+    label: next.label || prev.label || null,
+    country: next.country || prev.country || null,
+    album: prev.album || next.album || null,
+    coverUrl: next.coverUrl || prev.coverUrl || null,
+    discogsUrl: next.discogsUrl || prev.discogsUrl || null,
+    mbUrl: prev.mbUrl || next.mbUrl || null,
+    sources: uniq([...(next.sources || []), ...(prev.sources || [])]),
+    tried: uniq([...(next.tried || []), ...(prev.tried || prev.sources || [])]),
+    fetchedAt: next.fetchedAt,
   };
 }
 
-module.exports = { lookup };
+// previous: an earlier result to complete with Discogs only (no new MusicBrainz request)
+async function lookup({ artist, title: t }, settings, previous = null) {
+  const useMb = settings.useMusicBrainz && !previous;
+  const useDg = settings.useDiscogs !== false;
+  if (!t) return { notFound: true, tried: [useDg && 'Discogs', useMb && 'MusicBrainz'].filter(Boolean), fetchedAt: Date.now() };
+  const [mb, dg] = await Promise.all([
+    useMb ? musicbrainz(artist, t).catch((e) => ({ error: e.message })) : null,
+    useDg ? discogs(artist, t, settings).catch((e) => ({ error: e.message })) : null,
+  ]);
+  const ok = (x) => x && !x.error;
+  // a source counts as tried when it answered, even "not found"; errors are retried later
+  const tried = [useDg && !(dg && dg.error) && 'Discogs', useMb && !(mb && mb.error) && 'MusicBrainz'].filter(Boolean);
+  let res;
+  if (!ok(mb) && !ok(dg)) {
+    const err = (mb && mb.error) || (dg && dg.error);
+    res = err && !tried.length ? { error: err, tried, fetchedAt: Date.now() } : { notFound: true, tried, fetchedAt: Date.now() };
+  } else {
+    const m = ok(mb) ? mb : {}, d = ok(dg) ? dg : {};
+    res = {
+      genres: uniq([...(d.genres || []), ...(m.genres || []).map(title)]).slice(0, 6),
+      styles: uniq([...(d.styles || []), ...(m.tags || []).map(title)]).slice(0, 8),
+      year: d.year || m.year || null,
+      label: d.label || null,
+      country: d.country || null,
+      album: m.album || null,
+      coverUrl: d.coverUrl || m.coverUrl || null,
+      discogsUrl: d.discogsUrl || null,
+      mbUrl: m.mbUrl || null,
+      sources: [ok(dg) && 'Discogs', ok(mb) && 'MusicBrainz'].filter(Boolean),
+      tried,
+      fetchedAt: Date.now(),
+    };
+  }
+  if (!previous || previous.error) return res;
+  const merged = merge(previous, res);
+  if (!merged.sources.length) merged.notFound = true;
+  return merged;
+}
+
+module.exports = { lookup, discogsAuth };

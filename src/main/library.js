@@ -167,7 +167,7 @@ class Library extends EventEmitter {
     this.tracks.set(id, t);
     if (!t.probe) this.probeQueue.push(id);
     if (needsAnalysis(t)) this.analyzeQueue.push(id); // older analyses stay visible until replaced
-    if (t.probe) this.queueOnline(t);
+    if (t.probe) this.scheduleOnline(t);
     this.dirty.add(id);
   }
 
@@ -230,7 +230,7 @@ class Library extends EventEmitter {
       if (!m.ok) {
         t.error = m.error;
       } else {
-        if (m.probe) { t.probe = m.probe; this.queueOnline(t); }
+        if (m.probe) { t.probe = m.probe; this.scheduleOnline(t); }
         if (m.analysis) {
           const s = this.getSettings();
           t.analysis = { ...m.analysis, minBpm: s.minBpm, maxBpm: s.maxBpm };
@@ -292,12 +292,26 @@ class Library extends EventEmitter {
     return { artist, title: (title || '').replace(/\s*\((original mix|extended mix)\)/i, '') };
   }
 
-  queueOnline(t, force = false) {
+  // Discogs enabled but never answered for this track (results from before Discogs was on)
+  needsDiscogs(t) {
+    const s = this.getSettings(), o = t.online;
+    return s.useDiscogs !== false && o && !o.error && !(o.tried || o.sources || []).includes('Discogs');
+  }
+
+  // automatic lookups: full lookup for new tracks, Discogs-only completion for older results
+  scheduleOnline(t) {
+    if (!this.getSettings().autoOnline) return;
+    if (!t.online) this.queueOnline(t);
+    else if (this.needsDiscogs(t)) this.queueOnline(t, false, true);
+  }
+
+  queueOnline(t, force = false, discogsOnly = false) {
     const s = this.getSettings();
-    if (!force && (!s.autoOnline || t.online)) return;
-    if (!s.useMusicBrainz && !s.discogsToken) return;
+    if (!force && !discogsOnly && (!s.autoOnline || t.online)) return;
+    if (!s.useMusicBrainz && s.useDiscogs === false) return;
     if (t.onlinePending) return;
     t.onlinePending = true;
+    t.onlineDiscogsOnly = discogsOnly;
     if (force) this.onlineQueue.unshift(t.id); else this.onlineQueue.push(t.id);
     this.pumpOnline();
   }
@@ -307,7 +321,7 @@ class Library extends EventEmitter {
       const t = this.tracks.get(this.onlineQueue.shift());
       if (!t) continue;
       this.onlineBusy++;
-      online.lookup(this.queryFor(t), this.getSettings())
+      online.lookup(this.queryFor(t), this.getSettings(), t.onlineDiscogsOnly ? t.online : null)
         .then((res) => { t.online = res; })
         .catch((e) => { t.online = { error: e.message, fetchedAt: Date.now() }; })
         .finally(() => {
@@ -317,6 +331,14 @@ class Library extends EventEmitter {
           this.dirty.add(t.id);
           this.pumpOnline();
         });
+    }
+  }
+
+  // after Discogs is enabled or credentials change: complete every track Discogs hasn't answered yet
+  refetchMissingDiscogs() {
+    for (const t of this.tracks.values()) {
+      if (!t.online) this.queueOnline(t, true);
+      else if (this.needsDiscogs(t)) this.queueOnline(t, true, true);
     }
   }
 
@@ -376,7 +398,7 @@ class Library extends EventEmitter {
   }
 
   publicTrack(t) {
-    const { busy, error, onlinePending, staleRange, ...rest } = t;
+    const { busy, error, onlinePending, onlineDiscogsOnly, staleRange, ...rest } = t;
     return { ...rest, analysis: this.effectiveAnalysis(t), status: error ? 'error' : busy ? 'busy' : t.analysis ? 'done' : 'pending', error, onlinePending: !!onlinePending, staleRange: !!staleRange };
   }
 

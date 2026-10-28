@@ -26,7 +26,10 @@ const DEFAULTS = {
   concurrency: Math.max(2, Math.min(8, os.cpus().length - 2)),
   autoOnline: true,
   useMusicBrainz: true,
+  useDiscogs: true,
   discogsToken: '',
+  discogsKey: '',
+  discogsSecret: '',
   lastRoot: null,
 };
 
@@ -89,8 +92,11 @@ app.on('before-quit', () => { if (library) library.close(); });
 ipcMain.handle('settings:get', () => settings);
 ipcMain.handle('settings:set', (_e, patch) => {
   const rangeChanged = (patch.minBpm != null && patch.minBpm !== settings.minBpm) || (patch.maxBpm != null && patch.maxBpm !== settings.maxBpm);
+  const dgKey = (s) => [s.useDiscogs, s.discogsToken, s.discogsKey, s.discogsSecret].join('|');
+  const discogsChanged = dgKey({ ...settings, ...patch }) !== dgKey(settings);
   settings = { ...settings, ...patch };
   saveSettings();
+  if (discogsChanged && settings.useDiscogs !== false) library.refetchMissingDiscogs();
   if (rangeChanged) for (const t of library.tracks.values()) {
     if (t.analysis) { t.staleRange = t.analysis.minBpm !== settings.minBpm || t.analysis.maxBpm !== settings.maxBpm; library.dirty.add(t.id); }
   }
