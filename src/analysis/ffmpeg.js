@@ -133,4 +133,11 @@ async function transcodeForPlayback(file, outFile) {
   return outFile;
 }
 
-module.exports = { probe, decode, extractCover, transcodeForPlayback, FFMPEG, FFPROBE };
+// seconds ffmpeg skips at the start of the audio stream (MP3 encoder + decoder delay, AAC priming…)
+async function audioStartTime(file) {
+  const { code, stdout } = await run(FFPROBE, ['-v', 'error', '-select_streams', 'a:0', '-show_entries', 'stream=start_time', '-of', 'csv=p=0', file], { timeout: 15000 });
+  const v = parseFloat(stdout.toString());
+  return code === 0 && Number.isFinite(v) && v > 0 ? v : 0;
+}
+
+module.exports = { probe, decode, audioStartTime, extractCover, transcodeForPlayback, FFMPEG, FFPROBE };

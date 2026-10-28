@@ -40,6 +40,8 @@ Dans rekordbox :
 2. Dans l'arborescence, ouvre « rekordbox xml » → « Playlists » → « CrateScope · <dossier> », sélectionne les titres et fais clic droit → « Importer dans la collection » (ou importe la playlist entière).
 3. Pour que rekordbox ne recalcule pas BPM et grille par-dessus, désactive l'analyse automatique du BPM avant l'import (Préférences → Analyse). Fais un essai sur quelques titres avant toute la collection.
 
+Pour les MP3, la grille est décalée de l'écart de lecture entre ffmpeg et rekordbox (rekordbox lit la trame d'en-tête LAME/Xing comme du silence et ne retire pas le délai d'encodage : ~51 ms pour un MP3 LAME classique, calculé fichier par fichier).
+
 La tonalité est exportée en notation classique (Am, F#m, Eb…) ; la notation Camelot est mise en tête des commentaires.
 - **Grille** : le BPM est affiné par suivi des temps et régression sur tout le morceau (précision ~5 ms), le 1er temps des mesures est déduit des changements de section, les drops / breaks sont repérés (marqueurs DROP / BREAK, ligne jaune toutes les 16 mesures à partir du drop). Un avertissement s'affiche si le tempo varie (vinyle, live) ou si le 1er temps est incertain.
 - **Corriger la grille** (barre « Grille » du deck) : `⇤ 1` / `1 ⇥` décalent le 1er temps de la mesure d'un temps (`[` `]`), `‹` `›` décalent la grille de 5 ms (Alt : 1 ms, touches `,` `.`), « 1 ici » fait du temps le plus proche de la tête de lecture un 1er temps (`G`), « Caler ici » cale la grille exactement sur la tête de lecture (`⇧G`), « Auto » revient à la détection. « ♩ Clic » (`C`) joue un métronome sur la grille pour vérifier à l'oreille.

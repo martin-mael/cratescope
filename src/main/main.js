@@ -5,7 +5,7 @@ const path = require('path');
 const os = require('os');
 const { pathToFileURL } = require('url');
 const { Library } = require('./library');
-const { buildXml } = require('./rekordbox');
+const { buildXml, mp3Offsets } = require('./rekordbox');
 const { extractCover, transcodeForPlayback } = require('../analysis/ffmpeg');
 
 const isMac = process.platform === 'darwin';
@@ -182,7 +182,8 @@ ipcMain.handle('export', async (_e, { format, ids, name }) => {
   if (format === 'rekordbox') {
     const r = await dialog.showSaveDialog(win, { defaultPath: 'cratescope-rekordbox.xml', filters: [{ name: 'rekordbox XML', extensions: ['xml'] }] });
     if (r.canceled || !r.filePath) return null;
-    const res = buildXml(tracks.map((t) => ({ ...t, analysis: library.effectiveAnalysis(t) })), { playlistName: name || 'CrateScope' });
+    const offsets = await mp3Offsets(tracks);
+    const res = buildXml(tracks.map((t) => ({ ...t, analysis: library.effectiveAnalysis(t) })), { playlistName: name || 'CrateScope', offsets });
     fs.writeFileSync(r.filePath, res.xml);
     shell.showItemInFolder(r.filePath);
     return { count: res.count, skipped: res.skipped.map((t) => t.name) };
