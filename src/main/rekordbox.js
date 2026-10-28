@@ -1,6 +1,7 @@
 'use strict';
 // rekordbox XML export (format spec: https://cdn.rekordbox.com/files/20200410160904/xml_format_list.pdf).
-// Carries BPM, beat grid (incl. bar position), key, genre / style / label and drops / breaks as memory cues.
+// Carries BPM, beat grid (incl. bar position), key and genre / style / label. No cue points: the
+// drop / break detection isn't reliable enough to land in a DJ's library.
 const { pathToFileURL } = require('url');
 
 // formats rekordbox can import, mapped to its "Kind" strings
@@ -32,7 +33,6 @@ function buildXml(tracks, { playlistName = 'CrateScope', today = new Date() } = 
     // beat number in the bar (1-4) of the first grid beat
     const battito = ((Math.round((a.beatOffset - a.downbeat) / beat) % 4) + 4) % 4 + 1;
     const id = entries.length + 1;
-    const marks = (a.sections || []).map((s) => `      <POSITION_MARK ${attrs({ Name: s.type === 'drop' ? 'DROP' : 'BREAK', Type: 0, Start: num(s.t, 3), Num: -1 })}/>`);
     entries.push({
       id,
       xml: `    <TRACK ${attrs({
@@ -64,7 +64,7 @@ function buildXml(tracks, { playlistName = 'CrateScope', today = new Date() } = 
         Mix: '',
       })}>
       <TEMPO ${attrs({ Inizio: num(a.beatOffset, 3), Bpm: num(a.bpm, 2), Metro: '4/4', Battito: battito })}/>
-${marks.join('\n')}${marks.length ? '\n' : ''}    </TRACK>`,
+    </TRACK>`,
     });
   }
   const out = `<?xml version="1.0" encoding="UTF-8"?>

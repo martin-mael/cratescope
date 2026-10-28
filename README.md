@@ -33,7 +33,7 @@ npm start -- ~/Music/Crate     # ouvre directement un dossier
 
 ## Envoyer vers rekordbox
 
-« Exporter » → « rekordbox XML » crée un fichier contenant, pour chaque titre : BPM et grille (avec la position du 1er temps de mesure), tonalité, genre / styles / label / année, et les drops / breaks en memory cues. Tes corrections manuelles (BPM, calage) sont incluses. Les fichiers audio ne sont pas modifiés. Les formats que rekordbox ne lit pas (OGG, Opus, WMA…) sont ignorés.
+« Exporter » → « rekordbox XML » crée un fichier contenant, pour chaque titre : BPM et grille (avec la position du 1er temps de mesure), tonalité et genre / styles / label / année (aucun cue point). Tes corrections manuelles (BPM, calage) sont incluses. Les fichiers audio ne sont pas modifiés. Les formats que rekordbox ne lit pas (OGG, Opus, WMA…) sont ignorés.
 
 Dans rekordbox :
 1. Préférences → Avancé → Base de données → « rekordbox xml » : choisis le fichier exporté, et active l'affichage de « rekordbox xml » dans l'arborescence (Préférences → Vue → Mise en page).
