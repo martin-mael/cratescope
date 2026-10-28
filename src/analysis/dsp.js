@@ -5,7 +5,7 @@
 const { analyzeGrid } = require('./grid');
 
 // bump when the analysis output changes: cached results with an older version get re-analysed
-const ANALYSIS_VERSION = 5;
+const ANALYSIS_VERSION = 6;
 const SR = 11025;
 const HOP = 64; // ~5.8 ms → 172 frames/s for onset detection
 const FPS = SR / HOP;
@@ -235,7 +235,10 @@ function tempo(env, minBpm = 88, maxBpm = 180, envBody = env) {
     if (b < minBpm - 0.5 || b > maxBpm + 0.5) continue;
     // a full-track comb is very sensitive to tempo error (0.05 BPM drifts ~70 ms over a track): refine first
     const coarse = localBest(b, 0.6, 0.1, envBody);
-    cands.push(localBest(coarse.bpm, 0.1, 0.01, envBody));
+    const fine = localBest(coarse.bpm, 0.1, 0.01, envBody);
+    // geometric mean of kick/snare-only and full-band combs: neither hats alone (8th notes) nor
+    // kick/snare alone (half-time feel of breaks) decide the metrical level
+    cands.push({ bpm: fine.bpm, score: Math.sqrt(fine.score * combScore(env, lagFor(fine.bpm)).score) });
   }
   cands.sort((a, b) => b.bpm - a.bpm); // fastest first
   let pick = cands[0];
@@ -247,7 +250,8 @@ function tempo(env, minBpm = 88, maxBpm = 180, envBody = env) {
   for (const m of [2, 0.5]) {
     const b = pick.bpm * m;
     if (b < minBpm - 0.5 || b > maxBpm + 0.5) continue;
-    const c = localBest(localBest(b, 0.3, 0.05, envBody).bpm, 0.06, 0.01, envBody);
+    const f = localBest(localBest(b, 0.3, 0.05, envBody).bpm, 0.06, 0.01, envBody);
+    const c = { bpm: f.bpm, score: Math.sqrt(f.score * combScore(env, lagFor(f.bpm)).score) };
     if (c.score * prior(c.bpm) > pick.score * prior(pick.bpm)) pick = c;
   }
   // 3) fine search with full-length comb (the grid module refines it further)
