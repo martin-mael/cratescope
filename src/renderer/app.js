@@ -253,8 +253,40 @@ tbody.addEventListener('dragstart', (e) => {
   e.preventDefault();
   const ids = state.selected.has(id) ? state.view.filter((x) => state.selected.has(x)) : [id];
   dragIds = ids;
-  api.startDrag(ids);
+  api.startDrag(ids, dragImage(ids));
 });
+
+// Finder-like drag label: a record, the title and artist (or the number of tracks), drawn at 2×
+function dragImage(ids) {
+  const W = 240, H = 44, R = 2;
+  const c = document.createElement('canvas');
+  c.width = W * R; c.height = H * R;
+  const g = c.getContext('2d');
+  g.scale(R, R);
+  g.fillStyle = 'rgba(27, 30, 36, 0.94)';
+  g.strokeStyle = '#2fb5ff';
+  g.lineWidth = 1;
+  g.beginPath(); g.roundRect(0.5, 0.5, W - 1, H - 1, 8); g.fill(); g.stroke();
+  // record with a coloured label (key colour of the first track)
+  const t = state.tracks.get(ids[0]);
+  const cx = 22, cy = H / 2;
+  g.fillStyle = '#0b0c0f'; g.beginPath(); g.arc(cx, cy, 15, 0, Math.PI * 2); g.fill();
+  g.strokeStyle = 'rgba(255,255,255,0.12)';
+  for (const r of [12, 9.5]) { g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.stroke(); }
+  g.fillStyle = keyColor(t && t.analysis && t.analysis.camelot);
+  g.beginPath(); g.arc(cx, cy, 6, 0, Math.PI * 2); g.fill();
+  g.fillStyle = '#0b0c0f'; g.beginPath(); g.arc(cx, cy, 1.4, 0, Math.PI * 2); g.fill();
+  const fit = (txt, w) => { if (g.measureText(txt).width <= w) return txt; while (txt && g.measureText(txt + '…').width > w) txt = txt.slice(0, -1); return txt + '…'; };
+  const x = 46, w = W - x - 10;
+  const font = '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+  g.textBaseline = 'middle';
+  g.font = `600 13px ${font}`; g.fillStyle = '#e7e9ee';
+  g.fillText(fit(ids.length > 1 ? `${ids.length} titres` : t ? fTitle(t) : '', w), x, 16);
+  g.font = `11.5px ${font}`; g.fillStyle = '#8b919e';
+  const sub = ids.length > 1 ? (t ? `${fTitle(t)}, …` : '') : t ? [fArtist(t), t.analysis && fmtBpm(t.analysis.bpm) + ' BPM'].filter(Boolean).join(' · ') : '';
+  g.fillText(fit(sub, w), x, 31);
+  return c.toDataURL('image/png');
+}
 
 function select(id, e, { load = true } = {}) {
   if (e.shiftKey && state.anchor) {

@@ -157,11 +157,18 @@ ipcMain.handle('track:playable', async (_e, id) => {
   return pathToFileURL(out).href;
 });
 
-const dragIcon = () => nativeImage.createFromPath(path.join(__dirname, '..', '..', 'assets', 'drag.png'));
-ipcMain.on('track:drag', (e, ids) => {
+// drag label drawn by the renderer (2× PNG data URL), app icon as a fallback
+function dragIcon(dataUrl) {
+  const m = /^data:image\/png;base64,(.+)$/.exec(dataUrl || '');
+  const img = m ? nativeImage.createFromBuffer(Buffer.from(m[1], 'base64'), { scaleFactor: 2 }) : null;
+  if (img && !img.isEmpty()) return img;
+  return nativeImage.createFromPath(path.join(__dirname, '..', '..', 'assets', 'drag.png'));
+}
+ipcMain.on('track:drag', (e, { ids, image }) => {
   const files = ids.map((id) => library.get(id)).filter(Boolean).map((t) => t.path);
   if (!files.length) return;
-  e.sender.startDrag(files.length === 1 ? { file: files[0], icon: dragIcon() } : { files, icon: dragIcon() });
+  const icon = dragIcon(image);
+  e.sender.startDrag(files.length === 1 ? { file: files[0], icon } : { files, icon });
 });
 
 ipcMain.on('track:context', (e, { ids, playlist }) => {

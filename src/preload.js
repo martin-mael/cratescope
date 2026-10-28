@@ -24,7 +24,7 @@ contextBridge.exposeInMainWorld('api', {
   waves: (id) => ipcRenderer.invoke('track:waves', id),
   cover: (id) => ipcRenderer.invoke('track:cover', id),
   playable: (id) => ipcRenderer.invoke('track:playable', id),
-  startDrag: (ids) => ipcRenderer.send('track:drag', ids),
+  startDrag: (ids, image) => ipcRenderer.send('track:drag', { ids, image }),
   contextMenu: (ids, playlist) => ipcRenderer.send('track:context', { ids, playlist }),
   exportList: (format, ids, name) => ipcRenderer.invoke('export', { format, ids, name }),
   exportPlaylists: (format, ids) => ipcRenderer.invoke('export:playlists', { format, ids }),
