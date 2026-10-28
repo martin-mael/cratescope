@@ -226,18 +226,31 @@ window.addEventListener('resize', () => { lastRange = ''; renderRows(true); draw
 
 function rowFromEvent(e) { const r = e.target.closest('.trow'); return r ? r.dataset.id : null; }
 
+// Pressing a row that is part of a multi-selection keeps the selection so it can be dragged as a
+// whole; the click only narrows it down on release (Finder behaviour).
+let pendingClick = null;
+function rowClick(id, e, frac) {
+  select(id, e);
+  if (frac != null) loadTrack(id, { play: true, at: frac }); // mini waveform: load and play from that point
+}
 tbody.addEventListener('mousedown', (e) => {
   const id = rowFromEvent(e);
   if (!id || e.button !== 0) return;
+  let frac = null;
   if (e.target.tagName === 'CANVAS') {
-    // click on the mini waveform: load and play from that point
     const rect = e.target.getBoundingClientRect();
-    const frac = (e.clientX - rect.left) / rect.width;
-    select(id, e);
-    loadTrack(id, { play: true, at: frac });
-    return;
+    frac = (e.clientX - rect.left) / rect.width;
   }
-  select(id, e);
+  const plain = !e.shiftKey && !e.metaKey && !e.ctrlKey;
+  if (plain && state.selected.size > 1 && state.selected.has(id)) { pendingClick = { id, frac }; return; }
+  pendingClick = null;
+  rowClick(id, e, frac);
+});
+window.addEventListener('mouseup', () => {
+  if (!pendingClick) return;
+  const { id, frac } = pendingClick;
+  pendingClick = null;
+  rowClick(id, {}, frac);
 });
 tbody.addEventListener('dblclick', (e) => { const id = rowFromEvent(e); if (id) loadTrack(id, { play: true }); });
 tbody.addEventListener('contextmenu', (e) => {
@@ -252,6 +265,7 @@ tbody.addEventListener('dragstart', (e) => {
   const id = rowFromEvent(e);
   if (!id) return;
   e.preventDefault();
+  pendingClick = null; // it was a drag, not a click
   const ids = state.selected.has(id) ? state.view.filter((x) => state.selected.has(x)) : [id];
   dragIds = ids;
   api.startDrag(ids, dragImage(ids));
