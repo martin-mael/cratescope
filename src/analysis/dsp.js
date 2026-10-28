@@ -5,7 +5,7 @@
 const { analyzeGrid } = require('./grid');
 
 // bump when the analysis output changes: cached results with an older version get re-analysed
-const ANALYSIS_VERSION = 6;
+const ANALYSIS_VERSION = 7;
 const SR = 11025;
 const HOP = 64; // ~5.8 ms → 172 frames/s for onset detection
 const FPS = SR / HOP;
@@ -104,8 +104,12 @@ function bandFrames(pcm) {
 
 // ---------- Waveform ----------
 // Returns Uint8Array of [peak, low, mid, high] * bins
-function waveform(bands, bins) {
-  const { low, mid, high, peak, nFrames } = bands;
+// smooth: moving-average radius in frames (5.8 ms each) applied to band energies first; at high
+// resolutions a single 64-sample frame is too short for a steady bass envelope.
+function waveform(bands, bins, smooth = 0) {
+  const { peak, nFrames } = bands;
+  let { low, mid, high } = bands;
+  if (smooth > 0) [low, mid, high] = [low, mid, high].map((arr) => movingAverage(arr, smooth));
   const out = new Float32Array(bins * 4);
   const per = nFrames / bins;
   for (let b = 0; b < bins; b++) {
@@ -134,6 +138,18 @@ function waveform(bands, bins) {
     for (let b = 0; b < bins; b++) res[b * 4 + c] = Math.min(255, Math.round(255 * Math.pow(out[b * 4 + c] / mx, c === 0 ? 1 : 0.75)));
   }
   return res;
+}
+
+function movingAverage(arr, r) {
+  const out = new Float32Array(arr.length);
+  let acc = 0;
+  for (let i = 0; i < Math.min(r, arr.length); i++) acc += arr[i];
+  for (let i = 0; i < arr.length; i++) {
+    if (i + r < arr.length) acc += arr[i + r];
+    if (i - r - 1 >= 0) acc -= arr[i - r - 1];
+    out[i] = acc / (Math.min(arr.length - 1, i + r) - Math.max(0, i - r) + 1);
+  }
+  return out;
 }
 
 // ---------- Onset envelope ----------
@@ -354,10 +370,10 @@ function analyze(pcm, { minBpm = 88, maxBpm = 180, lufs } = {}) {
   const grid = analyzeGrid(env, bands, FPS, bpm, phase, minBpm, maxBpm);
   const k = detectKey(pcm);
   const duration = pcm.length / SR;
-  const overview = waveform(bands, 1200);
+  const overview = waveform(bands, 2000, 2);
   const mini = waveform(bands, 120);
-  const detailBins = Math.max(1, Math.round(duration * 50)); // 50 bins / s
-  const detail = waveform(bands, detailBins);
+  const detailBins = Math.max(1, Math.round(duration * 150)); // 150 bins / s (~6.7 ms), close to rekordbox
+  const detail = waveform(bands, detailBins, 1);
   return {
     ...grid,
     confidence,

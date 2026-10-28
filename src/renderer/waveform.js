@@ -22,31 +22,40 @@
     return m;
   }
 
-  // data: Uint8Array [peak, low, mid, high] * n ; draws bins [from, to) across the canvas width
+  // data: Uint8Array [peak, low, mid, high] * n ; draws bins [from, to) across the canvas width.
+  // Each band is a filled, mirrored contour: max of the bins under a pixel when zoomed out,
+  // linear interpolation between bin centres when zoomed in (no stair steps).
   function drawBands(ctx, data, x0, w, h, from, to, opts = {}) {
     const n = data.length / 4;
     const mid = h / 2;
-    const span = to - from;
+    const perPx = (to - from) / w;
     const scale = (opts.gain || 0.96) * mid;
     const mx = bandMax(data);
-    const layers = [['low', 1], ['mid', 2], ['high', 3]];
-    for (const [name, c] of layers) {
-      ctx.fillStyle = COLORS[name];
-      ctx.globalAlpha = name === 'high' ? 0.9 : 1;
-      ctx.beginPath();
-      for (let x = 0; x < w; x++) {
-        const a = from + (x / w) * span, b = from + ((x + 1) / w) * span;
-        let i0 = Math.floor(a), i1 = Math.max(i0 + 1, Math.floor(b));
-        if (i1 <= 0 || i0 >= n) continue;
-        i0 = Math.max(0, i0); i1 = Math.min(n, i1);
+    const ys = new Float32Array(w + 1);
+    const layers = [['low', 1, 1], ['mid', 2, 0.62], ['high', 3, 0.38]];
+    for (const [name, c, k] of layers) {
+      const f = (scale * k) / mx[c];
+      for (let x = 0; x <= w; x++) {
+        const a = from + x * perPx;
         let v = 0;
-        for (let i = i0; i < i1; i++) if (data[i * 4 + c] > v) v = data[i * 4 + c];
-        // layer heights: low gets the full envelope, mid/high are progressively narrower, like Rekordbox 3-band
-        const k = name === 'low' ? 1 : name === 'mid' ? 0.62 : 0.38;
-        const y = (v / mx[c]) * scale * k;
-        if (y < 0.5) continue;
-        ctx.rect(x0 + x, mid - y, 1, y * 2);
+        if (perPx >= 1) {
+          const i0 = Math.max(0, Math.floor(a)), i1 = Math.min(n, Math.floor(a + perPx) + 1);
+          for (let i = i0; i < i1; i++) if (data[i * 4 + c] > v) v = data[i * 4 + c];
+        } else {
+          const p = a - 0.5, i = Math.floor(p), t = p - i;
+          const v0 = i >= 0 && i < n ? data[i * 4 + c] : 0;
+          const v1 = i + 1 >= 0 && i + 1 < n ? data[(i + 1) * 4 + c] : 0;
+          v = v0 + (v1 - v0) * t;
+        }
+        ys[x] = v * f;
       }
+      ctx.fillStyle = COLORS[name];
+      ctx.globalAlpha = name === 'high' ? 0.92 : 1;
+      ctx.beginPath();
+      ctx.moveTo(x0, mid - ys[0]);
+      for (let x = 1; x <= w; x++) ctx.lineTo(x0 + x, mid - ys[x]);
+      for (let x = w; x >= 0; x--) ctx.lineTo(x0 + x, mid + ys[x]);
+      ctx.closePath();
       ctx.fill();
     }
     ctx.globalAlpha = 1;
@@ -88,13 +97,14 @@
     ctx.fillRect(px - 1, 0, 2, h);
   }
 
-  // detail: 50 bins / s. Centered playhead, scrolling. Grid = anchor + k * beat, bars from `downbeat`,
+  // detail: ~150 bins / s. Centered playhead, scrolling. Grid = anchor + k * beat, bars from `downbeat`,
   // phrase lines every 16 bars from the anchor (the main drop when one was found).
   function drawZoom(canvas, data, time, secondsVisible, a) {
     const { ctx, w, h, dpr } = fit(canvas);
     ctx.clearRect(0, 0, w, h);
     if (!data) return;
-    const rate = 50;
+    // bins per second: 150 since analysis v7, 50 before (derived so older caches still draw right)
+    const rate = a && a.duration ? data.length / 4 / a.duration : 150;
     const t0 = time - secondsVisible / 2, t1 = time + secondsVisible / 2;
     const xOf = (t) => Math.round(((t - t0) / secondsVisible) * w);
     if (a && a.bpm) {
