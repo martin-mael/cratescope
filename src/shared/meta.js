@@ -31,8 +31,9 @@
     const p = t.probe, q = t.quality;
     if (!p) return out;
     const lossy = LOSSY.has(t.ext) && p.codec !== 'alac' && p.codec !== 'flac';
-    if (lossy && p.bitrate && p.bitrate < 192) out.push({ level: 'bad', text: `Bitrate faible (${p.bitrate} kbps)` });
-    else if (lossy && p.bitrate && p.bitrate < 256 && p.codec === 'mp3') out.push({ level: 'warn', text: `Bitrate moyen (${p.bitrate} kbps)` });
+    // (VBR V0 averages 220-260 kbps and is fine: only clearly low bitrates are flagged)
+    if (lossy && p.bitrate && p.bitrate < 160) out.push({ level: 'bad', text: `Bitrate faible (${p.bitrate} kbps)` });
+    else if (lossy && p.bitrate && p.bitrate < 210 && p.codec === 'mp3') out.push({ level: 'warn', text: `Bitrate moyen (${p.bitrate} kbps)` });
     if (p.sampleRate && p.sampleRate < 44100) out.push({ level: 'warn', text: `Échantillonnage ${kHz(p.sampleRate)}` });
     if (!q || q.error) return out;
     if (q.cutoff) {

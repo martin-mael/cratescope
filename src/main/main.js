@@ -7,6 +7,8 @@ const { pathToFileURL } = require('url');
 const { Library, hashId, AUDIO_EXT } = require('./library');
 const { Playlists } = require('./playlists');
 const { Updater } = require('./updater');
+const { copyToDevice } = require('./device');
+const { History } = require('./history');
 const meta = require('../shared/meta');
 const query = require('../shared/query');
 const { buildXml, mp3Offsets } = require('./rekordbox');
@@ -95,6 +97,8 @@ app.whenReady().then(() => {
   library.on('removed', (id) => send('library:removed', id));
   library.on('rescanned', () => send('library:snapshot', library.snapshot()));
   playlists = new Playlists(path.join(app.getPath('userData'), 'playlists.json'));
+  history = new History(path.join(app.getPath('userData'), 'history.json'));
+  history.on('change', () => send('history:update', history.public()));
   library.pinned = () => playlists.allPaths();
   playlists.on('change', () => send('playlists:update', publicPlaylists()));
   updater = new Updater({
@@ -230,6 +234,7 @@ ipcMain.on('track:context', (e, { ids, playlist }) => {
     { label: 'Grille automatique (annuler BPM et calage manuels)', enabled: tracks.some((t) => t.edit), click: () => tracks.forEach((t) => library.setGrid(t.id, { reset: true })) },
     { type: 'separator' },
     { label: 'Re-chercher les métadonnées en ligne', click: () => library.refetchOnline(tracks.map((t) => t.id)) },
+    { label: 'Marquer comme non écouté', enabled: tracks.some((t) => history.sessionIds().has(t.id)), click: () => history.unplay(paths) },
     { type: 'separator' },
     { label: 'Ouvrir sur Discogs', enabled: !!(one.online && one.online.discogsUrl), click: () => shell.openExternal(one.online.discogsUrl) },
     { label: 'Ouvrir sur MusicBrainz', enabled: !!(one.online && one.online.mbUrl), click: () => shell.openExternal(one.online.mbUrl) },
@@ -306,10 +311,56 @@ ipcMain.on('playlists:context', (e, id) => {
     { type: 'separator' },
     { label: 'Exporter en rekordbox XML…', click: () => exportPlaylists('rekordbox', [id]).then((r) => send('export:done', r)) },
     { label: 'Exporter en M3U8…', click: () => exportPlaylists('m3u', [id]) },
+    { label: 'Copier vers une clé USB…', click: () => copyPlaylists([id]) },
     { type: 'separator' },
     { label: 'Supprimer la playlist…', click: () => deletePlaylist(id) },
   ]).popup({ window: BrowserWindow.fromWebContents(e.sender) });
 });
+
+// ---------- history ----------
+const sessionName = (s) => 'Session du ' + new Date(s.start).toLocaleString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+ipcMain.handle('history:get', () => history.public());
+ipcMain.on('history:add', (_e, id) => { const t = library.get(id); if (t) history.add(t.path); });
+// a session's tracks may live outside the open folder: load them before showing it
+ipcMain.handle('history:open', async (_e, id) => { await library.ensure(history.paths(id)); return true; });
+ipcMain.on('history:menu', (e, id) => {
+  const s = history.get(id);
+  if (!s) return;
+  const lists = () => [{ name: sessionName(s), paths: history.paths(id) }];
+  Menu.buildFromTemplate([
+    { label: 'Convertir en playlist', click: () => send('history:toPlaylist', playlists.create(sessionName(s), history.paths(id)).id) },
+    { label: 'Exporter en rekordbox XML…', click: () => exportLists('rekordbox', lists()).then((r) => send('export:done', r)) },
+    { label: 'Exporter en M3U8…', click: () => exportLists('m3u', lists()) },
+    { type: 'separator' },
+    { label: "Supprimer de l'historique", click: () => history.remove(id) },
+  ]).popup({ window: BrowserWindow.fromWebContents(e.sender) });
+});
+
+// ---------- copy to a USB stick ----------
+let copyJob = null;
+async function copyPlaylists(ids) {
+  if (copyJob) return;
+  const lists = (ids || playlists.list.map((p) => p.id)).map((id) => playlists.get(id)).filter(Boolean)
+    .map((p) => ({ name: p.name, paths: resolvedPaths(p) })).filter((l) => l.paths.length);
+  if (!lists.length) { send('copy:done', { error: 'Aucun titre à copier' }); return; }
+  const r = await dialog.showOpenDialog(win, {
+    title: 'Dossier de destination (sur la clé)', buttonLabel: 'Copier ici', properties: ['openDirectory', 'createDirectory'],
+    message: 'Chaque playlist devient un dossier ; un rekordbox XML pointant vers les copies est écrit à la racine du dossier choisi.',
+  });
+  if (r.canceled || !r.filePaths[0]) return;
+  copyJob = { cancelled: false };
+  try {
+    const res = await copyToDevice(library, lists, r.filePaths[0], { job: copyJob, onProgress: (p) => send('copy:progress', p) });
+    send('copy:done', { ...res, skipped: (res.skipped || []).map((x) => `${path.basename(x.path)} : ${x.why}`) });
+    if (res.xmlPath) shell.showItemInFolder(res.xmlPath);
+  } catch (e) {
+    send('copy:done', { error: e.message });
+  } finally {
+    copyJob = null;
+  }
+}
+ipcMain.on('copy:start', (_e, ids) => copyPlaylists(ids));
+ipcMain.on('copy:cancel', () => { if (copyJob) copyJob.cancelled = true; });
 
 // ---------- export ----------
 const withGrid = (t) => ({ ...t, analysis: library.effectiveAnalysis(t) });
@@ -335,7 +386,10 @@ const safeName = (s) => s.replace(/[\\/:*?"<>|]/g, '_').trim() || 'playlist';
 
 // one or more playlists: a single rekordbox XML holding all of them, or one .m3u8 per playlist
 async function exportPlaylists(format, ids) {
-  const lists = ids.map((id) => playlists.get(id)).filter(Boolean).map((p) => ({ name: p.name, paths: resolvedPaths(p) }));
+  return exportLists(format, ids.map((id) => playlists.get(id)).filter(Boolean).map((p) => ({ name: p.name, paths: resolvedPaths(p) })));
+}
+// lists: [{ name, paths }] (playlists, history sessions…)
+async function exportLists(format, lists) {
   if (!lists.length) return null;
   const trackOf = (p) => library.get(hashId(p));
   if (format === 'rekordbox') {

@@ -11,6 +11,8 @@ const state = {
   playlist: null,      // id of the playlist being viewed (instead of a folder)
   special: null,       // 'dups' | 'hist:<session id>': a view of its own (instead of a folder / playlist)
   played: new Set(),   // ids played (>= 30 s) during this session
+  history: { sessions: [], counts: {} }, // from main (history.json)
+  histOpen: false,     // history sessions listed in the sidebar
   trackStamp: 0,       // bumped on every track change (cache key for duplicates)
   sort: { key: 'title', dir: 1 },
   sort2: null,         // secondary sort (shift-click on a header)
@@ -168,10 +170,25 @@ function dupBadge(t) {
   return d ? `<span class="dup${d.best ? ' best' : ''}" title="${d.size} copies de ce titre${d.best ? ' · meilleure version (lossless, bitrate, taille)' : ''}">⧉${d.size}${d.best ? ' ✓' : ''}</span>` : '';
 }
 function dupSig(t) { const d = dups().get(t.id); return d ? d.size + (d.best ? 'b' : '') : ''; }
-function playCount() { return 0; }
-function isPlayed() { return false; }
-function historyRows() { return []; }
-function historyTracks() { return []; }
+// history (sessions from main) — see the history section below
+function playCount(t) { return state.history.counts[t.id] || 0; }
+function isPlayed(t) { return state.played.has(t.id); }
+function historyRows() {
+  const h = state.history.sessions;
+  const rows = [`<div class="pl view" data-hist-toggle="1" title="Titres écoutés au moins 30 s, session par session (clic droit sur une session : playlist, export, suppression)">
+    <span>🕘</span><span class="nm">Historique</span><span class="ct">${h.length ? (state.histOpen ? '▼' : '▶') : ''}</span></div>`];
+  if (state.histOpen) {
+    for (const s of h.slice(0, 40)) {
+      const when = new Date(s.start).toLocaleString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+      rows.push(`<div class="pl view sub ${state.special === 'hist:' + s.id ? 'active' : ''}" data-view="hist:${s.id}"><span class="nm">${s.current ? 'Session en cours' : esc(when)}</span><span class="ct">${s.ids.length}</span></div>`);
+    }
+  }
+  return rows;
+}
+function historyTracks(id) {
+  const s = state.history.sessions.find((x) => x.id === id);
+  return s ? s.ids.map((x) => state.tracks.get(x)).filter(Boolean) : [];
+}
 
 // ---------- filtering ----------
 function inFolder(t) {
@@ -541,10 +558,37 @@ function showSpecial(key) {
   state.dirtyTree = true;
   invalidate();
 }
-$('views').addEventListener('click', (e) => {
+$('views').addEventListener('click', async (e) => {
+  if (e.target.closest('[data-hist-toggle]')) { state.histOpen = !state.histOpen; renderViews(); return; }
   const el = e.target.closest('[data-view]');
-  if (el) showSpecial(el.dataset.view);
+  if (!el) return;
+  if (el.dataset.view.startsWith('hist:')) await api.historyOpen(el.dataset.view.slice(5)); // load tracks from other folders
+  showSpecial(el.dataset.view);
 });
+
+// a track counts as played after 30 s of actual playback (seeking around doesn't count)
+const PLAYED_AFTER = 30;
+const listen = { id: null, secs: 0, last: null };
+const player = $('audio'); // (the deck's `audio` constant is declared further down)
+player.addEventListener('timeupdate', () => {
+  const id = player.dataset.id, now = player.currentTime;
+  if (id !== listen.id) { listen.id = id; listen.secs = 0; listen.last = now; return; }
+  const d = now - listen.last;
+  listen.last = now;
+  if (player.paused || d <= 0 || d > 1) return;
+  listen.secs += d;
+  if (listen.secs >= PLAYED_AFTER && !state.played.has(id)) { state.played.add(id); api.historyAdd(id); }
+});
+function applyHistory(h) {
+  state.history = h;
+  state.played = new Set(h.current);
+  for (const el of rowPool.values()) el._sig = '';
+  state.dirtyTree = true;
+  invalidate();
+}
+api.onHistory(applyHistory);
+api.onHistoryToPlaylist((id) => showPlaylist(id));
+api.history().then(applyHistory);
 $('views').addEventListener('contextmenu', (e) => { const el = e.target.closest('[data-view^="hist:"]'); if (el) api.historyMenu(el.dataset.view.slice(5)); });
 
 function showPlaylist(id) {
@@ -691,8 +735,9 @@ function removeSelectedFromPlaylist() {
 }
 
 let flashTimer;
+let statusHold = 0; // until then, library stats don't overwrite the message on the right of the status bar
 function flash(msg) {
-  $('statusRight').textContent = msg;
+  statusHold = Date.now() + 4000; $('statusRight').textContent = msg;
   clearTimeout(flashTimer);
   flashTimer = setTimeout(() => { if ($('statusRight').textContent === msg) $('statusRight').textContent = ''; }, 4000);
 }
@@ -1064,11 +1109,16 @@ function reportExport(res) {
   if (!res || !res.count && !res.skipped) return;
   let msg = `rekordbox XML : ${res.count} titre(s) exporté(s)`;
   if (res.skipped.length) msg += ` · ${res.skipped.length} ignoré(s) (format non lu par rekordbox ou pas encore analysé)`;
-  $('statusRight').textContent = msg;
+  statusHold = Date.now() + 10000; $('statusRight').textContent = msg;
   $('statusRight').title = res.skipped.join('\n');
 }
 api.onExportDone(reportExport);
 $('exportMenu').addEventListener('click', (e) => {
+  if (e.target.closest('[data-copy]')) {
+    if (!state.playlists.length) { flash('Aucune playlist à copier'); return; }
+    api.copyToDevice(null);
+    return;
+  }
   const all = e.target.closest('[data-pl]');
   if (all) {
     if (!state.playlists.length) { flash('Aucune playlist à exporter'); return; }
@@ -1083,6 +1133,23 @@ $('exportMenu').addEventListener('click', (e) => {
   const name = pl ? pl.name : 'CrateScope · ' + ((state.folder || state.root || '').split(SEP).pop() || 'export');
   api.exportList(b.dataset.fmt, ids, name).then(reportExport);
 });
+
+// ---------- copy to a USB stick ----------
+const mb = (b) => (b / 1048576).toFixed(0) + ' Mo';
+api.onCopyProgress((p) => {
+  $('copyCancel').classList.remove('hidden');
+  statusHold = Date.now() + 3000; $('statusRight').textContent = `Copie vers la clé : ${p.done} / ${p.total}${p.totalBytes ? ` · ${mb(p.bytes)} / ${mb(p.totalBytes)}` : ''} · ${p.file}`;
+});
+api.onCopyDone((r) => {
+  $('copyCancel').classList.add('hidden');
+  if (r.error) { statusHold = Date.now() + 10000; $('statusRight').textContent = `Copie impossible : ${r.error}`; return; }
+  if (r.cancelled) { statusHold = Date.now() + 10000; $('statusRight').textContent = `Copie annulée (${r.copied} / ${r.total} titres copiés)`; return; }
+  let msg = `Clé prête : ${r.copied} copié(s)${r.kept ? `, ${r.kept} déjà à jour` : ''} · rekordbox XML écrit sur la clé`;
+  if (r.skipped.length) msg += ` · ${r.skipped.length} ignoré(s)`;
+  statusHold = Date.now() + 10000; $('statusRight').textContent = msg;
+  $('statusRight').title = r.skipped.join('\n');
+});
+$('copyCancel').addEventListener('click', () => api.cancelCopy());
 
 // ---------- library ----------
 function applySnapshot(snap) {
@@ -1142,7 +1209,7 @@ function updateStats(s) {
   }
   if (s.errors) txt += ` · ${s.errors} erreur(s)`;
   $('status').textContent = txt;
-  $('statusRight').textContent = s.online ? `Métadonnées en ligne : ${s.online} en attente` : '';
+  if (Date.now() > statusHold) $('statusRight').textContent = s.online ? `Métadonnées en ligne : ${s.online} en attente` : '';
 }
 
 // ---------- settings ----------

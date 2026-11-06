@@ -147,4 +147,4 @@ ${p.ids.map((id) => `        <TRACK Key="${id}"/>`).join('\n')}
   return { xml: out, count: entries.length, skipped };
 }
 
-module.exports = { buildXml, mp3Offsets, mp3Offset };
+module.exports = { buildXml, mp3Offsets, mp3Offset, KIND };

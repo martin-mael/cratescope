@@ -18,7 +18,7 @@ npm start -- ~/Music/Crate     # ouvre directement un dossier
 - **Analyse** en arrière-plan dans un pool de worker threads : un seul passage ffmpeg décode en mono 11 kHz *et* mesure le loudness EBU R128. Le DSP (JS pur, `src/analysis/dsp.js`) calcule :
   - BPM : enveloppe d'onsets multi-bandes → autocorrélation → vérification des niveaux métriques (×2, ×3/2, ×4/3…) par peigne aligné en phase → affinage au 1/100 de BPM + grille de temps ;
   - tonalité : chromagramme blanchi, accent sur la basse, profils de Sha'ath (libKeyFinder) → notation Camelot ;
-  - waveforms (mini, vue d'ensemble, détaillée à 50 points/s) en 3 bandes.
+  - waveforms (mini, vue d'ensemble, détaillée à 150 points/s) en 3 bandes.
   Le dossier en cours d'affichage est analysé en priorité. Résultats en cache (`~/Library/Application Support/cratescope`), donc les réouvertures sont instantanées.
 - **Métadonnées en ligne** : MusicBrainz et Discogs, sans clé (Discogs donne genre **et** style, label, année). Facultatif dans ⚙︎ : un token personnel Discogs, ou la Consumer Key + Consumer Secret d'une application Discogs, ajoute les pochettes et accélère la recherche (60 titres/min au lieu de 25). Les titres déjà traités sont complétés automatiquement quand Discogs est activé ou qu'une clé est ajoutée.
 - Plage de BPM réglable (88–180 par défaut) : les tempos sont ramenés dans cette plage. Avec une plage large (ex. 80–220), entre un tempo et son double c'est le plus proche de ~140 BPM qui l'emporte, sauf si l'autre est nettement plus marqué.
@@ -30,6 +30,50 @@ npm start -- ~/Music/Crate     # ouvre directement un dossier
 - **Mixables** (touche `m`) : n'affiche que les titres compatibles harmoniquement avec le titre chargé (Camelot ±1 / relatif) et à ±6 % de BPM (ou demi/double tempo).
 - Glisser des lignes vers Rekordbox, Ableton, le Finder… ; clic droit : Finder, ré-analyse, re-recherche en ligne, Discogs/MusicBrainz.
 - Export de la vue (ou de la sélection) en playlist M3U8, en CSV ou en **rekordbox XML**.
+- **Colonnes** : clic droit sur l'en-tête pour afficher / masquer (Commentaire, Album, Écoutes, Chemin sont masquées par défaut). Clic sur un en-tête = tri, ⇧ clic = tri secondaire (ex. Genre puis BPM).
+
+## Note, commentaire, infos
+
+Rien n'est écrit dans les fichiers audio : tout reste dans CrateScope et part dans les exports (rekordbox XML, CSV, M3U8).
+
+- **Note** : clic sur les étoiles (dans la liste ou le deck ; re-cliquer l'étoile active remet à 0), touches `0` à `5` sur la sélection, ou clic droit › Note. Exportée dans le champ Rating de rekordbox.
+- **Commentaire** : « ＋ commentaire » dans le deck, ou clic droit › « Modifier le commentaire… ». Exporté dans les commentaires rekordbox, après la tonalité Camelot.
+- **Titre / artiste / genre** : `F2` ou clic droit › « Modifier les infos… », aussi sur une sélection (un champ laissé vide n'est pas changé). Un genre corrigé remplace ceux des tags et en ligne. Les valeurs corrigées s'affichent en bleu ; « ↺ » ou clic droit › « Rétablir les infos du fichier » reviennent aux tags.
+
+## Recherche
+
+Sans syntaxe, tous les mots doivent apparaître (titre, artiste, genres, styles, label, album, commentaire, nom de fichier, tonalité, BPM). Accents et majuscules ignorés. Avec syntaxe (infobulle du champ de recherche) :
+
+| Syntaxe | Effet |
+|---|---|
+| `bpm:125-130`, `bpm:>140`, `bpm:128` | plage, borne, valeur (±0,5) |
+| `key:8A`, `key:~8A`, `key:Am` | tonalité exacte / compatibles |
+| `genre:`, `style:`, `label:`, `artist:`, `title:`, `album:`, `comment:` | filtre sur ce champ |
+| `year:1995-1999`, `rating:>=4`, `lufs:>-8`, `kbps:<320`, `time:>6` (minutes) | valeurs numériques |
+| `fmt:flac`, `fmt:lossless` | format |
+| `quality:bad`, `quality:warn`, `quality:issue` | qualité du fichier |
+| `dup:yes`, `played:yes`, `pl:no` | doublons, écoutés dans la session, dans aucune playlist |
+| `-mot`, `-genre:trance`, `"deux mots"` | exclusion, expression exacte |
+
+**Playlists intelligentes** : « ＋ » › « Playlist intelligente » enregistre une recherche (✦ dans la liste). Son contenu se met à jour tout seul, parmi les titres chargés (dossier ouvert et titres des playlists). Clic droit › « Modifier la recherche… ». Elle s'exporte comme une playlist.
+
+## Qualité des fichiers
+
+En arrière-plan, après l'analyse (un passage ffmpeg sur des extraits, ~0,2 s par titre), colonne « Qualité » (✖ problème, ▲ à vérifier, ✓ OK ; le détail est dans l'infobulle et dans le deck) :
+
+- **Faux lossless** : un FLAC / WAV / AIFF dont le spectre s'arrête net à ~16, 19 ou 20 kHz a été fabriqué à partir d'un MP3 / AAC (128, 192 ou 320 kbps). Un MP3 « 320 kbps » coupé à 16 kHz a été ré-encodé depuis un 128.
+- Bitrate faible (< 160 kbps) ou moyen (< 210 kbps), échantillonnage < 44,1 kHz.
+- Saturation (écrêtages par minute), mono enregistré en stéréo, silence au début ou à la fin.
+
+Une coupure à ~20 kHz sur un lossless n'est qu'une suspicion (certains masterings filtrent aussi). Recherche : `quality:bad`, `quality:issue`.
+
+## Doublons
+
+Vues › **Doublons** : les titres présents plusieurs fois (même artiste et titre, « original mix », « feat. », ponctuation et accents ignorés, et même durée à 2 s près), groupés, la meilleure version en premier et marquée ✓ (vrai lossless, puis bitrate, puis taille : un faux lossless passe derrière un bon MP3). Les remixes et edits ne sont pas des doublons. Rien n'est supprimé depuis l'app. Le badge ⧉ apparaît aussi dans la liste normale ; recherche `dup:yes`.
+
+## Historique
+
+Un titre écouté au moins 30 s (lecture réelle) s'affiche en vert pendant la session et entre dans l'historique (Vues › **Historique**, une entrée par lancement de l'app, dans l'ordre d'écoute). Clic droit sur une session : la convertir en playlist, l'exporter, la supprimer. Colonne « Écoutes » (masquée par défaut) : nombre d'écoutes au total. Clic droit sur un titre › « Marquer comme non écouté ».
 
 ## Playlists
 
@@ -38,10 +82,20 @@ Les playlists (en bas de la barre latérale) appartiennent à l'app, pas au doss
 - « ＋ » crée une playlist ; double-clic pour la renommer, clic droit pour la renommer, l'exporter ou la supprimer.
 - Ajouter des titres : glisser des lignes sur une playlist, clic droit › « Ajouter à une playlist », ou glisser des fichiers / dossiers depuis le disque (sur la playlist, ou dans la liste quand elle est affichée). Les titres hors du dossier ouvert sont analysés aussi.
 - Retirer : `⌫` / Suppr sur la sélection, ou clic droit. Les fichiers ne sont jamais touchés.
-- Ordre : celui d'ajout ; cliquer sur une colonne trie la vue, re-cliquer sur la playlist revient à son ordre (c'est cet ordre qui est exporté).
+- Ordre : celui d'ajout, modifiable en glissant les titres dans la liste (trait bleu = point d'insertion) ; cliquer sur une colonne trie la vue, re-cliquer sur la playlist revient à son ordre (c'est cet ordre qui est exporté).
 - Export : clic droit sur une playlist (rekordbox XML ou M3U8), ou « Exporter » › « toutes les playlists » (un seul XML contenant toutes les playlists, ou un M3U8 par playlist).
 - Un ⚠ indique des fichiers introuvables (déplacés ou supprimés).
 - **Hors playlist** (touche `p`) : n'affiche que les titres du dossier qui ne sont encore dans aucune playlist, pratique pour trier une bibliothèque au fur et à mesure.
+
+## Copier vers une clé USB
+
+Clic droit sur une playlist › « Copier vers une clé USB… », ou « Exporter » › « Copier toutes les playlists vers une clé USB… », puis choisir un dossier sur la clé :
+
+1. chaque playlist devient un dossier, les fichiers sont nommés `Artiste - Titre.ext` (noms compatibles FAT32 / exFAT) ; un titre présent dans plusieurs playlists n'est copié qu'une fois, un fichier déjà présent et identique n'est pas recopié ;
+2. l'analyse est reprise telle quelle pour les copies (pas de ré-analyse si tu ouvres la clé dans CrateScope) ;
+3. `CrateScope-rekordbox.xml` est écrit dans le dossier choisi, avec les playlists et des chemins vers les copies.
+
+Il ne reste qu'à ouvrir ce XML dans rekordbox et à exporter les playlists vers la clé. L'espace libre est vérifié avant de commencer ; la copie s'annule depuis la barre d'état. Les titres pas encore analysés et les formats que rekordbox ne lit pas sont ignorés (liste dans l'infobulle du message final).
 
 ## Envoyer vers rekordbox
 

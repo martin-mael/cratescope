@@ -393,6 +393,17 @@ class Library extends EventEmitter {
     for (const id of ids) { const t = this.tracks.get(id); if (t) this.queueOnline(t, true); }
   }
 
+  // the analysis of `src` now also describes its copy `dst` (copy to a USB stick): no re-analysis later
+  cloneEntry(src, dst) {
+    const c = this.cache.data[src];
+    if (!c) return;
+    let st;
+    try { st = fs.statSync(dst); } catch { return; }
+    this.cache.data[dst] = { ...c, size: st.size, mtime: st.mtimeMs };
+    try { fs.copyFileSync(path.join(this.wavesDir, hashId(src) + '.bin'), path.join(this.wavesDir, hashId(dst) + '.bin')); } catch {}
+    this.cache.save();
+  }
+
   // patch: { rating?: 0-5, comment?, title?, artist?, genre? }; '' / null / 0 = back to the file / online value
   setMeta(ids, patch) {
     for (const id of ids) {

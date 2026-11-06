@@ -30,9 +30,11 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Grid / BPM / downbeat tests (synthetic tracks)
+      - name: Grid / BPM / downbeat + search syntax tests
         if: matrix.platform == 'darwin' && matrix.arch == 'arm64'
-        run: node scripts/grid-test.js
+        run: |
+          node scripts/grid-test.js
+          node scripts/query-test.js
       - name: Package
         run: node scripts/package.js ${{ matrix.platform }} ${{ matrix.arch }}
       - name: Check bundled ffmpeg + analyser

@@ -38,6 +38,8 @@ dup:yes  played:yes|no  pl:no (dans aucune playlist)
         <div class="menu-sep"></div>
         <button data-pl="rekordbox">rekordbox XML (toutes les playlists)</button>
         <button data-pl="m3u">M3U8 (toutes les playlists)</button>
+        <div class="menu-sep"></div>
+        <button data-copy="all">Copier toutes les playlists vers une clé USB…</button>
       </div>
     </div>
     <button id="btnSettings" class="btn icon" title="Réglages">⚙︎</button>
@@ -113,6 +115,7 @@ dup:yes  played:yes|no  pl:no (dans aucune playlist)
     <div class="progress"><div id="progressBar"></div></div>
     <div id="statusRight"></div>
     <div class="spacer"></div>
+    <button id="copyCancel" class="upd error hidden" title="Arrêter la copie (les fichiers déjà copiés restent)">✕ Annuler la copie</button>
     <button id="updBtn" class="upd hidden"></button>
   </footer>
 
