@@ -13,7 +13,13 @@
     <button id="btnOpen" class="btn primary">Ouvrir un dossier…</button>
     <div id="rootName" class="root-name"></div>
     <div class="spacer"></div>
-    <input id="search" class="input search" type="search" placeholder="Rechercher titre, artiste, genre, label…" />
+    <input id="search" class="input search" type="search" placeholder="Rechercher… (bpm:120-130 key:~8A genre:house rating:>=4)" title="Recherche : tous les mots doivent apparaître.
+bpm:125-130  bpm:>140  key:8A  key:~8A (compatibles)
+genre:  style:  label:  artist:  title:  album:  comment:
+year:1995-1999  rating:>=4  lufs:>-8  kbps:<320  time:>6 (min)
+fmt:flac  fmt:lossless  quality:bad|warn|issue
+dup:yes  played:yes|no  pl:no (dans aucune playlist)
+-mot ou -genre:trance pour exclure, &quot;deux mots&quot; pour une expression" />
     <div class="bpm-filter">
       <input id="bpmMin" class="input num" type="number" placeholder="BPM min" />
       <span>–</span>
@@ -85,12 +91,14 @@
     <aside class="sidebar">
       <div class="side-head">Dossiers</div>
       <div id="tree" class="tree"></div>
-      <div class="side-head pl-head">Playlists <button id="btnNewPl" class="pl-add" title="Nouvelle playlist">＋</button></div>
+      <div class="side-head pl-head">Vues</div>
+      <div id="views" class="views"></div>
+      <div class="side-head pl-head">Playlists <button id="btnNewPl" class="pl-add" title="Nouvelle playlist, ou playlist intelligente (recherche enregistrée)">＋</button></div>
       <div id="plList" class="pl-list"></div>
     </aside>
     <section class="list">
       <div id="thead" class="row head"></div>
-      <div id="tbody" class="tbody"><div id="spacer" class="tspacer"></div></div>
+      <div id="tbody" class="tbody"><div id="spacer" class="tspacer"></div><div id="dropLine" class="drop-line hidden"></div></div>
       <div id="emptyState" class="empty-state">
         <div class="big" id="emptyBig">Ouvre un dossier de musique</div>
         <div id="emptyText">MP3, WAV, FLAC, AIFF, OGG, OPUS, M4A… Les sous-dossiers sont scannés et analysés en arrière-plan (BPM, tonalité, waveform, loudness).</div>
@@ -175,6 +183,7 @@
   <audio id="audio" preload="auto"></audio>
   <script src="../shared/keys.js"></script>
   <script src="../shared/meta.js"></script>
+  <script src="../shared/query.js"></script>
   <script src="waveform.js"></script>
   <script src="app.js"></script>
 </body>

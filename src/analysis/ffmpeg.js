@@ -140,4 +140,4 @@ async function audioStartTime(file) {
   return code === 0 && Number.isFinite(v) && v > 0 ? v : 0;
 }
 
-module.exports = { probe, decode, audioStartTime, extractCover, transcodeForPlayback, FFMPEG, FFPROBE };
+module.exports = { probe, decode, audioStartTime, extractCover, transcodeForPlayback, run, FFMPEG, FFPROBE };

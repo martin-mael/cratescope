@@ -385,4 +385,4 @@ function analyze(pcm, { minBpm = 88, maxBpm = 180, lufs } = {}) {
 }
 
 module.exports = { analyze, SR, FPS, camelot, NOTES, ANALYSIS_VERSION };
-module.exports._internals = { chromagram, pearson, bandFrames, onsetEnvelope, tempo };
+module.exports._internals = { chromagram, pearson, bandFrames, onsetEnvelope, tempo, fft };

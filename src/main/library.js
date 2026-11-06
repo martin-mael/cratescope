@@ -10,8 +10,11 @@ const { EventEmitter } = require('events');
 const online = require('./online');
 const meta = require('../shared/meta');
 const { ANALYSIS_VERSION } = require('../analysis/dsp');
+const { QUALITY_VERSION } = require('../analysis/quality');
 
 const needsAnalysis = (t) => !t.analysis || t.analysis.version !== ANALYSIS_VERSION;
+// quality check: background job of its own (lowest priority), never re-runs the main analysis
+const needsQuality = (t) => !!t.probe && (!t.quality || t.quality.v !== QUALITY_VERSION);
 const round = (v, d) => Math.round(v * 10 ** d) / 10 ** d;
 
 const AUDIO_EXT = new Set(['mp3', 'wav', 'flac', 'aif', 'aiff', 'ogg', 'oga', 'opus', 'm4a', 'aac', 'alac', 'wma', 'ape', 'wv', 'mp4', 'webm', 'mka']);
@@ -78,6 +81,7 @@ class Library extends EventEmitter {
     this.focusQueue = [];
     this.probeQueue = []; this.probeIdx = 0;
     this.analyzeQueue = []; this.analyzeIdx = 0;
+    this.qualityQueue = []; this.qualityIdx = 0;
     this.onlineQueue = []; this.onlineBusy = 0;
     this.watcher = null;
     this.pinned = () => []; // paths kept loaded outside the open folder (playlist tracks)
@@ -100,8 +104,8 @@ class Library extends EventEmitter {
   async open(root) {
     this.root = root;
     this.tracks.clear();
-    this.focusQueue = []; this.probeQueue = []; this.analyzeQueue = []; this.onlineQueue = [];
-    this.probeIdx = this.analyzeIdx = 0;
+    this.focusQueue = []; this.probeQueue = []; this.analyzeQueue = []; this.qualityQueue = []; this.onlineQueue = [];
+    this.probeIdx = this.analyzeIdx = this.qualityIdx = 0;
     await this.scan();
     await this.ensure(this.pinned());
     this.watch();
@@ -188,6 +192,7 @@ class Library extends EventEmitter {
       analysis: valid ? c.analysis || null : null,
       mini: valid ? c.mini || null : null,
       online: c && c.online ? c.online : null, // online data survives file edits
+      quality: valid ? c.quality || null : null, // file quality check (see analysis/quality.js)
       edit: migrateEdit(c), // manual BPM / grid corrections, survive re-analysis
       meta: (c && c.meta) || null, // user data: rating, comment, corrected title / artist / genre (reset by nothing automatic)
       error: null,
@@ -198,6 +203,7 @@ class Library extends EventEmitter {
     this.tracks.set(id, t);
     if (!t.probe) this.probeQueue.push(id);
     if (needsAnalysis(t)) this.analyzeQueue.push(id); // older analyses stay visible until replaced
+    this.qualityQueue.push(id); // checked (and skipped if up to date) when nothing else is left
     if (t.probe) this.scheduleOnline(t);
     this.dirty.add(id);
   }
@@ -240,6 +246,10 @@ class Library extends EventEmitter {
       const t = this.tracks.get(this.analyzeQueue[this.analyzeIdx++]);
       if (t && !t.busy && needsAnalysis(t) && !t.error) return mk(t, 'analyze');
     }
+    while (this.qualityIdx < this.qualityQueue.length) {
+      const t = this.tracks.get(this.qualityQueue[this.qualityIdx++]);
+      if (t && !t.busy && !t.error && needsQuality(t)) return { ...mk(t, 'quality'), probe: t.probe, ext: t.ext };
+    }
     return null;
   }
 
@@ -259,10 +269,16 @@ class Library extends EventEmitter {
     const t = this.tracks.get(m.id);
     if (t) {
       t.busy = false;
-      if (!m.ok) {
+      if (!m.ok && m.kind === 'quality') {
+        t.quality = { v: QUALITY_VERSION, error: m.error }; // not retried until the version changes
+        this.persist(t);
+      } else if (!m.ok) {
         t.error = m.error;
+      } else if (m.kind === 'quality') {
+        t.quality = m.quality;
+        this.persist(t);
       } else {
-        if (m.probe) { t.probe = m.probe; this.scheduleOnline(t); }
+        if (m.probe) { t.probe = m.probe; this.scheduleOnline(t); this.qualityQueue.push(t.id); }
         if (m.analysis) {
           const s = this.getSettings();
           t.analysis = { ...m.analysis, minBpm: s.minBpm, maxBpm: s.maxBpm };
@@ -296,7 +312,7 @@ class Library extends EventEmitter {
   }
 
   persist(t) {
-    this.cache.data[t.path] = { size: t.size, mtime: t.mtime, probe: t.probe, analysis: t.analysis, mini: t.mini, online: t.online, edit: t.edit, meta: t.meta };
+    this.cache.data[t.path] = { size: t.size, mtime: t.mtime, probe: t.probe, analysis: t.analysis, mini: t.mini, online: t.online, edit: t.edit, meta: t.meta, quality: t.quality };
     this.cache.save();
   }
 
@@ -452,14 +468,15 @@ class Library extends EventEmitter {
   }
 
   stats() {
-    let probed = 0, analyzed = 0, errors = 0, busy = 0;
+    let probed = 0, analyzed = 0, errors = 0, busy = 0, quality = 0;
     for (const t of this.tracks.values()) {
+      if (needsQuality(t) && !t.error) quality++;
       if (t.probe) probed++;
       if (!needsAnalysis(t)) analyzed++;
       if (t.error) errors++;
       if (t.busy) busy++;
     }
-    return { total: this.tracks.size, probed, analyzed, errors, busy, online: this.onlineQueue.length + this.onlineBusy };
+    return { total: this.tracks.size, probed, analyzed, errors, busy, quality, online: this.onlineQueue.length + this.onlineBusy };
   }
 
   snapshot() {

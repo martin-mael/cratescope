@@ -3,10 +3,15 @@
 const { parentPort } = require('worker_threads');
 const { probe, decode } = require('../analysis/ffmpeg');
 const { analyze } = require('../analysis/dsp');
+const { checkQuality } = require('../analysis/quality');
 
 parentPort.on('message', async (job) => {
   const t0 = Date.now();
   try {
+    if (job.kind === 'quality') {
+      parentPort.postMessage({ id: job.id, kind: job.kind, ok: true, quality: await checkQuality(job.path, job.probe, job.ext) });
+      return;
+    }
     if (job.kind === 'probe') {
       const info = await probe(job.path);
       parentPort.postMessage({ id: job.id, kind: job.kind, ok: true, probe: info });

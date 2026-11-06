@@ -8,6 +8,7 @@ const { Library, hashId, AUDIO_EXT } = require('./library');
 const { Playlists } = require('./playlists');
 const { Updater } = require('./updater');
 const meta = require('../shared/meta');
+const query = require('../shared/query');
 const { buildXml, mp3Offsets } = require('./rekordbox');
 const { extractCover, transcodeForPlayback } = require('../analysis/ffmpeg');
 
@@ -43,6 +44,7 @@ const DEFAULTS = {
 let win;
 let library;
 let playlists;
+let history = null;
 let updater;
 let settings;
 const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
@@ -201,12 +203,12 @@ ipcMain.on('track:context', (e, { ids, playlist }) => {
     {
       label: tracks.length > 1 ? `Ajouter ${tracks.length} titres à une playlist` : 'Ajouter à une playlist',
       submenu: [
-        ...playlists.list.map((p) => ({ label: p.name, enabled: p !== current, click: () => playlists.add(p.id, paths) })),
+        ...playlists.list.filter((p) => p.query == null).map((p) => ({ label: p.name, enabled: p !== current, click: () => playlists.add(p.id, paths) })),
         ...(playlists.list.length ? [{ type: 'separator' }] : []),
         { label: 'Nouvelle playlist…', click: () => send('playlists:new', ids) },
       ],
     },
-    ...(current ? [{ label: `Retirer de « ${current.name} »   ( ⌫ )`, click: () => playlists.removeTracks(current.id, paths) }] : []),
+    ...(current && current.query == null ? [{ label: `Retirer de « ${current.name} »   ( ⌫ )`, click: () => playlists.removeTracks(current.id, paths) }] : []),
     { type: 'separator' },
     { label: isMac ? 'Afficher dans le Finder' : "Afficher dans l'Explorateur", click: () => shell.showItemInFolder(one.path) },
     { label: 'Copier le chemin', click: () => clipboard.writeText(tracks.map((t) => t.path).join('\n')) },
@@ -235,14 +237,31 @@ ipcMain.on('track:context', (e, { ids, playlist }) => {
 });
 
 // ---------- playlists ----------
-const publicPlaylists = () => playlists.list.map((p) => ({ id: p.id, name: p.name, ids: p.paths.map(hashId) }));
+const publicPlaylists = () => playlists.list.map((p) => ({ id: p.id, name: p.name, ids: p.paths.map(hashId), ...(p.query != null ? { query: p.query } : {}) }));
+
+// tracks a smart playlist holds right now (loaded tracks: open folder + playlist tracks), by title
+function smartPaths(p) {
+  const tracks = [...library.tracks.values()].map((t) => library.publicTrack(t));
+  const ctx = {
+    listed: new Set(playlists.list.filter((x) => x.query == null).flatMap((x) => x.paths.map(hashId))),
+    dups: new Set(meta.duplicates(tracks).keys()),
+    played: history ? history.sessionIds() : new Set(),
+  };
+  const terms = query.parse(p.query);
+  return tracks.filter((t) => query.matches(t, terms, ctx))
+    .sort((a, b) => meta.fold(meta.title(a)).localeCompare(meta.fold(meta.title(b))))
+    .map((t) => t.path);
+}
+const resolvedPaths = (p) => (p.query != null ? smartPaths(p) : p.paths);
 const pathsOf = (ids) => ids.map((id) => library.get(id)).filter(Boolean).map((t) => t.path);
 
 ipcMain.handle('playlists:get', async () => {
   await library.ensure(playlists.allPaths());
   return publicPlaylists();
 });
-ipcMain.handle('playlists:create', async (_e, { name, ids }) => playlists.create(name, pathsOf(ids || [])).id);
+ipcMain.handle('playlists:create', async (_e, { name, ids, query: q }) => playlists.create(name, pathsOf(ids || []), q != null ? q : null).id);
+ipcMain.on('playlists:setQuery', (_e, { id, query: q }) => playlists.setQuery(id, q));
+ipcMain.on('playlists:move', (_e, { id, ids, to }) => playlists.move(id, pathsOf(ids), to));
 ipcMain.on('playlists:add', (_e, { id, ids }) => playlists.add(id, pathsOf(ids)));
 ipcMain.on('playlists:removeTracks', (_e, { id, ids }) => playlists.removeTracks(id, pathsOf(ids)));
 ipcMain.on('playlists:rename', (_e, { id, name }) => playlists.rename(id, name));
@@ -271,11 +290,19 @@ async function deletePlaylist(id) {
 }
 ipcMain.on('playlists:delete', (_e, id) => deletePlaylist(id));
 
+ipcMain.on('playlists:newMenu', (e, search) => {
+  Menu.buildFromTemplate([
+    { label: 'Nouvelle playlist…', click: () => send('playlists:new', []) },
+    { label: search ? `Playlist intelligente « ${search.slice(0, 40)} »…` : 'Playlist intelligente (recherche enregistrée)…', click: () => send('playlists:newSmart') },
+  ]).popup({ window: BrowserWindow.fromWebContents(e.sender) });
+});
+
 ipcMain.on('playlists:context', (e, id) => {
   const p = playlists.get(id);
   if (!p) return;
   Menu.buildFromTemplate([
     { label: 'Renommer…', click: () => send('playlists:rename', id) },
+    ...(p.query != null ? [{ label: 'Modifier la recherche…', click: () => send('playlists:editQuery', id) }] : []),
     { type: 'separator' },
     { label: 'Exporter en rekordbox XML…', click: () => exportPlaylists('rekordbox', [id]).then((r) => send('export:done', r)) },
     { label: 'Exporter en M3U8…', click: () => exportPlaylists('m3u', [id]) },
@@ -308,7 +335,7 @@ const safeName = (s) => s.replace(/[\\/:*?"<>|]/g, '_').trim() || 'playlist';
 
 // one or more playlists: a single rekordbox XML holding all of them, or one .m3u8 per playlist
 async function exportPlaylists(format, ids) {
-  const lists = ids.map((id) => playlists.get(id)).filter(Boolean);
+  const lists = ids.map((id) => playlists.get(id)).filter(Boolean).map((p) => ({ name: p.name, paths: resolvedPaths(p) }));
   if (!lists.length) return null;
   const trackOf = (p) => library.get(hashId(p));
   if (format === 'rekordbox') {

@@ -1,5 +1,5 @@
 'use strict';
-/* global api, keys, meta, waveform */
+/* global api, keys, meta, query, waveform */
 
 const $ = (id) => document.getElementById(id);
 const state = {
@@ -9,6 +9,9 @@ const state = {
   folder: '',          // '' = root
   playlists: [],       // [{ id, name, ids }]
   playlist: null,      // id of the playlist being viewed (instead of a folder)
+  special: null,       // 'dups' | 'hist:<session id>': a view of its own (instead of a folder / playlist)
+  played: new Set(),   // ids played (>= 30 s) during this session
+  trackStamp: 0,       // bumped on every track change (cache key for duplicates)
   sort: { key: 'title', dir: 1 },
   sort2: null,         // secondary sort (shift-click on a header)
   selected: new Set(),
@@ -144,12 +147,31 @@ $('thead').addEventListener('contextmenu', (e) => {
 });
 
 // filled in by the quality / duplicates / history sections below
-function qualityCell() { return ''; }
-function qualitySort() { return 0; }
-function dupBadge() { return ''; }
-function dupSig() { return ''; }
+const Q_ICON = { bad: '✖', warn: '▲', info: '•', ok: '✓' };
+const Q_ORDER = { bad: 0, warn: 1, info: 2, ok: 3 };
+function qualityCell(t) {
+  const lvl = meta.qualityLevel(t);
+  if (!lvl) return '';
+  const issues = meta.qualityIssues(t).map((i) => i.text);
+  const tip = issues.length ? issues.join('\n') : 'Aucun problème détecté';
+  return `<span class="q q-${lvl}" title="${esc(tip)}">${Q_ICON[lvl]}${issues.length > 1 ? `<sup>${issues.length}</sup>` : ''}</span>`;
+}
+function qualitySort(t) { const l = meta.qualityLevel(t); return l ? Q_ORDER[l] : 9; }
+// duplicates over everything loaded (open folder + playlist tracks), recomputed when tracks change
+let dupMap = new Map(), dupStamp = -1;
+function dups() {
+  if (dupStamp !== state.trackStamp) { dupMap = meta.duplicates([...state.tracks.values()]); dupStamp = state.trackStamp; }
+  return dupMap;
+}
+function dupBadge(t) {
+  const d = dups().get(t.id);
+  return d ? `<span class="dup${d.best ? ' best' : ''}" title="${d.size} copies de ce titre${d.best ? ' · meilleure version (lossless, bitrate, taille)' : ''}">⧉${d.size}${d.best ? ' ✓' : ''}</span>` : '';
+}
+function dupSig(t) { const d = dups().get(t.id); return d ? d.size + (d.best ? 'b' : '') : ''; }
 function playCount() { return 0; }
 function isPlayed() { return false; }
+function historyRows() { return []; }
+function historyTracks() { return []; }
 
 // ---------- filtering ----------
 function inFolder(t) {
@@ -165,39 +187,58 @@ function bpmCompatible(a, b) {
   return [1, 2, 0.5].some((m) => Math.abs((b * m) / a - 1) <= 0.06);
 }
 
+// what the list shows before filters: { list, ordered (has a 'pos' order), grouped (duplicates), terms (smart playlist) }
+function viewSource() {
+  const pl = currentPlaylist();
+  if (pl && pl.query != null) return { list: [...state.tracks.values()], terms: query.parse(pl.query) };
+  if (pl) return { list: pl.ids.map((id) => state.tracks.get(id)).filter(Boolean), ordered: true };
+  if (state.special === 'dups') { const d = dups(); return { list: [...state.tracks.values()].filter((t) => d.has(t.id)), grouped: true }; }
+  if (state.special && state.special.startsWith('hist:')) return { list: historyTracks(state.special.slice(5)), ordered: true };
+  return { list: state.tracks.values(), folder: true };
+}
+const queryCtx = () => ({
+  dups: new Set(dups().keys()),
+  played: state.played,
+  listed: new Set(state.playlists.filter((p) => p.query == null).flatMap((p) => p.ids)),
+});
+
 function computeView() {
-  const q = $('search').value.trim().toLowerCase();
-  const terms = q ? q.split(/\s+/) : [];
+  const terms = query.parse($('search').value);
   const bMin = parseFloat($('bpmMin').value), bMax = parseFloat($('bpmMax').value);
   const kf = $('keyFilter').value;
   const ref = $('compatible').checked && state.loaded ? state.tracks.get(state.loaded) : null;
   const refA = ref && ref.analysis;
-  const out = [];
-  const pl = currentPlaylist();
+  const src = viewSource();
+  const ctx = queryCtx();
   // "Hors playlist": tracks no playlist contains yet (meaningless inside a playlist)
-  const listed = !pl && $('noPlaylist').checked ? new Set(state.playlists.flatMap((p) => p.ids)) : null;
-  const source = pl ? pl.ids.map((id) => state.tracks.get(id)).filter(Boolean) : state.tracks.values();
-  for (const t of source) {
-    if (!pl && !inFolder(t)) continue;
+  const listed = src.folder && $('noPlaylist').checked ? ctx.listed : null;
+  const out = [];
+  for (const t of src.list) {
+    if (src.folder && !inFolder(t)) continue;
     if (listed && listed.has(t.id)) continue;
+    if (src.terms && !query.matches(t, src.terms, ctx)) continue;
     const a = t.analysis;
     if (!isNaN(bMin) && (!a || a.bpm < bMin)) continue;
     if (!isNaN(bMax) && (!a || a.bpm > bMax)) continue;
     if (kf && (!a || (!kf.startsWith('~') ? a.camelot !== kf : !keys.compatible(kf.slice(1), a.camelot)))) continue;
     if (refA && t.id !== ref.id && (!a || !keys.compatible(refA.camelot, a.camelot) || !bpmCompatible(refA.bpm, a.bpm))) continue;
-    if (terms.length) {
-      const hay = `${fTitle(t)} ${fArtist(t)} ${fGenres(t).join(' ')} ${fStyles(t).join(' ')} ${fLabel(t)} ${t.name} ${tags(t).album || ''} ${a ? a.camelot + ' ' + a.key + ' ' + a.bpm : ''}`.toLowerCase();
-      if (!terms.every((x) => hay.includes(x))) continue;
-    }
+    if (terms.length && !query.matches(t, terms, ctx)) continue;
     out.push(t);
   }
-  if (pl && state.sort.key === 'pos') { // playlist order
+  if (src.ordered && state.sort.key === 'pos') { // playlist / history order
     state.view = (state.sort.dir > 0 ? out : out.reverse()).map((t) => t.id);
+    return;
+  }
+  if (src.grouped && state.sort.key === 'dup') { // copies together, best one first
+    const d = dups();
+    const rankIn = (t) => (d.get(t.id).best ? 0 : 1);
+    out.sort((a, b) => d.get(a.id).group.localeCompare(d.get(b.id).group) || rankIn(a) - rankIn(b));
+    state.view = out.map((t) => t.id);
     return;
   }
   const col = colByKey.get(state.sort.key) || colByKey.get('title');
   const col2 = state.sort2 && colByKey.get(state.sort2.key);
-  const dir = state.sort.dir, dir2 = col2 ? state.sort2.dir : 1;
+  const dir = colByKey.has(state.sort.key) ? state.sort.dir : 1, dir2 = col2 ? state.sort2.dir : 1;
   const keyed = out.map((t) => [col.sort(t), col2 ? col2.sort(t) : 0, meta.fold(fTitle(t)), t]);
   const cmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
   keyed.sort((x, y) => cmp(x[0], y[0]) * dir || cmp(x[1], y[1]) * dir2 || cmp(x[2], y[2]));
@@ -265,11 +306,15 @@ function renderRows(force) {
 function renderEmpty() {
   const pl = currentPlaylist();
   const folderTracks = [...state.tracks.values()].some((t) => !t.external);
-  $('emptyState').classList.toggle('hidden', pl ? pl.ids.length > 0 : folderTracks);
-  $('emptyBig').textContent = pl ? 'Playlist vide' : state.root && !folderTracks ? 'Aucun fichier audio trouvé ici' : 'Ouvre un dossier de musique';
-  $('emptyText').classList.toggle('hidden', !!pl);
-  $('btnOpen2').classList.toggle('hidden', !!pl);
-  $('emptyPl').classList.toggle('hidden', !pl);
+  const plain = pl && pl.query == null;
+  let show = !folderTracks, big = state.root && !folderTracks ? 'Aucun fichier audio trouvé ici' : 'Ouvre un dossier de musique';
+  if (plain) { show = !pl.ids.length; big = 'Playlist vide'; }
+  else if (pl || state.special) { show = !state.view.length; big = pl ? 'Aucun titre ne correspond à cette recherche' : state.special === 'dups' ? 'Aucun doublon' : 'Session vide'; }
+  $('emptyState').classList.toggle('hidden', !show);
+  $('emptyBig').textContent = big;
+  $('emptyText').classList.toggle('hidden', !!(pl || state.special));
+  $('btnOpen2').classList.toggle('hidden', !!(pl || state.special));
+  $('emptyPl').classList.toggle('hidden', !plain);
 }
 
 tbody.addEventListener('scroll', () => renderRows(false), { passive: true });
@@ -430,7 +475,7 @@ function renderTree() {
     const kids = [...n.kids.values()].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
     const open = openNodes.has(n.path);
     return `<div class="node ${open ? '' : 'closed'}" data-path="${esc(n.path)}">
-      <div class="lbl ${!state.playlist && state.folder === n.path ? 'active' : ''}"><span class="tw">${kids.length ? (open ? '▼' : '▶') : ''}</span><span class="nm">${depth === 0 ? '🎧 ' : '📁 '}${esc(n.name || 'Dossier')}</span><span class="ct">${n.count}</span></div>
+      <div class="lbl ${!state.playlist && !state.special && state.folder === n.path ? 'active' : ''}"><span class="tw">${kids.length ? (open ? '▼' : '▶') : ''}</span><span class="nm">${depth === 0 ? '🎧 ' : '📁 '}${esc(n.name || 'Dossier')}</span><span class="ct">${n.count}</span></div>
       ${kids.length ? `<div class="kids">${kids.map((k) => html(k, depth + 1)).join('')}</div>` : ''}
     </div>`;
   };
@@ -444,7 +489,7 @@ $('tree').addEventListener('click', (e) => {
     if (openNodes.has(p)) openNodes.delete(p); else openNodes.add(p);
   } else {
     state.folder = p;
-    if (state.playlist) showPlaylist(null);
+    if (state.playlist || state.special) showPlaylist(null);
     openNodes.add(p);
     api.focus(p, $('recursive').checked);
     tbody.scrollTop = 0;
@@ -457,7 +502,15 @@ $('tree').addEventListener('click', (e) => {
 const currentPlaylist = () => (state.playlist && state.playlists.find((p) => p.id === state.playlist)) || null;
 
 function renderPlaylists() {
+  const ctx = queryCtx();
+  const all = [...state.tracks.values()];
   const html = state.playlists.map((p) => {
+    if (p.query != null) { // smart playlist: count what its search matches right now
+      const terms = query.parse(p.query);
+      const n = all.filter((t) => query.matches(t, terms, ctx)).length;
+      return `<div class="pl smart ${p.id === state.playlist ? 'active' : ''}" data-id="${p.id}" title="${esc(p.name)} · recherche : ${esc(p.query)}">
+      <span>✦</span><span class="nm">${esc(p.name)}</span><span class="ct">${n}</span></div>`;
+    }
     const missing = p.ids.filter((id) => !state.tracks.has(id)).length;
     return `<div class="pl ${p.id === state.playlist ? 'active' : ''}" data-id="${p.id}" title="${esc(p.name)}">
       <span>♫</span><span class="nm">${esc(p.name)}</span>
@@ -465,10 +518,38 @@ function renderPlaylists() {
       <span class="ct">${p.ids.length}</span></div>`;
   }).join('');
   $('plList').innerHTML = html || '<div class="pl-empty">Aucune playlist. ＋ pour en créer une.</div>';
+  renderViews();
 }
+
+// ---------- views: duplicates, history ----------
+function renderViews() {
+  const groups = new Set([...dups().values()].map((d) => d.group)).size;
+  const rows = [`<div class="pl view ${state.special === 'dups' ? 'active' : ''}" data-view="dups" title="Titres présents en plusieurs exemplaires (même artiste, titre et durée) : la meilleure version est marquée ✓">
+    <span>⧉</span><span class="nm">Doublons</span><span class="ct">${groups || ''}</span></div>`];
+  rows.push(...historyRows());
+  $('views').innerHTML = rows.join('');
+}
+function showSpecial(key) {
+  state.special = key;
+  state.playlist = null;
+  $('noPlaylist').parentElement.classList.toggle('off', !!key);
+  state.sort = key === 'dups' ? { key: 'dup', dir: 1 } : key ? { key: 'pos', dir: 1 } : { key: 'title', dir: 1 };
+  state.sort2 = null;
+  state.selected.clear();
+  tbody.scrollTop = 0;
+  renderHead();
+  state.dirtyTree = true;
+  invalidate();
+}
+$('views').addEventListener('click', (e) => {
+  const el = e.target.closest('[data-view]');
+  if (el) showSpecial(el.dataset.view);
+});
+$('views').addEventListener('contextmenu', (e) => { const el = e.target.closest('[data-view^="hist:"]'); if (el) api.historyMenu(el.dataset.view.slice(5)); });
 
 function showPlaylist(id) {
   state.playlist = id;
+  state.special = null;
   $('noPlaylist').parentElement.classList.toggle('off', !!id); // no effect inside a playlist
   if (id) state.sort = { key: 'pos', dir: 1 };
   else if (state.sort.key === 'pos') state.sort = { key: 'title', dir: 1 };
@@ -503,7 +584,22 @@ async function newPlaylist(ids = []) {
 }
 
 $('nameInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); $('nameDlg').close('ok'); } });
-$('btnNewPl').addEventListener('click', () => newPlaylist());
+$('btnNewPl').addEventListener('click', () => api.newPlaylistMenu($('search').value.trim()));
+api.onNewSmartPlaylist(async () => {
+  const q = await askName('Playlist intelligente : recherche', $('search').value.trim());
+  if (!q) return;
+  const name = await askName('Nom de la playlist intelligente', q);
+  if (!name) return;
+  showPlaylist(await api.createPlaylist(name, [], q));
+  $('search').value = '';
+  invalidate();
+});
+api.onEditPlaylistQuery(async (id) => {
+  const p = state.playlists.find((x) => x.id === id);
+  if (!p) return;
+  const q = await askName(`Recherche de « ${p.name} »`, p.query);
+  if (q) api.setPlaylistQuery(id, q);
+});
 $('plList').addEventListener('click', (e) => {
   const el = e.target.closest('.pl');
   if (!el) return;
@@ -532,7 +628,7 @@ function dropInto(playlistId, e) {
 }
 const accepts = (e) => [...e.dataTransfer.types].includes('Files') || dragIds;
 $('plList').addEventListener('dragover', (e) => {
-  const el = e.target.closest('.pl');
+  const el = e.target.closest('.pl:not(.smart)');
   document.querySelectorAll('.pl.drop').forEach((x) => x !== el && x.classList.remove('drop'));
   if (!el || !accepts(e)) return;
   e.preventDefault();
@@ -543,28 +639,53 @@ $('plList').addEventListener('dragleave', (e) => { if (!$('plList').contains(e.r
 $('plList').addEventListener('drop', (e) => {
   e.preventDefault();
   document.querySelectorAll('.pl.drop').forEach((x) => x.classList.remove('drop'));
-  const el = e.target.closest('.pl');
+  const el = e.target.closest('.pl:not(.smart)');
   if (el) dropInto(el.dataset.id, e);
 });
 // files dropped on the list while a playlist is shown go into it
 const listEl = document.querySelector('.list');
+const dropTarget = () => { const p = currentPlaylist(); return p && p.query == null ? p : null; };
 listEl.addEventListener('dragover', (e) => {
-  if (!state.playlist || !accepts(e)) return;
+  if (!dropTarget() || !accepts(e)) return;
+  // reordering: the row under the pointer shows where the dragged tracks land
+  markDropRow(e);
   e.preventDefault();
   listEl.classList.add('drop');
 });
-listEl.addEventListener('dragleave', (e) => { if (!listEl.contains(e.relatedTarget)) listEl.classList.remove('drop'); });
+listEl.addEventListener('dragleave', (e) => { if (!listEl.contains(e.relatedTarget)) { listEl.classList.remove('drop'); clearDropRow(); } });
 listEl.addEventListener('drop', (e) => {
   listEl.classList.remove('drop');
-  if (!state.playlist) return;
+  if (!dropTarget()) return;
   e.preventDefault();
+  const at = dropIndex(e);
+  clearDropRow();
+  // tracks dragged from this very playlist (in playlist order): move them; anything else: add
+  if (dragIds && state.sort.key === 'pos' && dragIds.every((id) => dropTarget().ids.includes(id))) {
+    const order = dropTarget().ids.filter((id) => !dragIds.includes(id));
+    const before = state.view[at];
+    api.movePlaylistTracks(state.playlist, dragIds, before ? order.indexOf(before) : order.length);
+    dragIds = null;
+    return;
+  }
   dropInto(state.playlist, e);
 });
 window.addEventListener('dragover', (e) => e.preventDefault()); // a stray drop never navigates away
 window.addEventListener('drop', (e) => { e.preventDefault(); dragIds = null; });
 
+// drop position in the list for reordering: index of the row the dragged tracks go before
+function dropIndex(e) {
+  const r = tbody.getBoundingClientRect();
+  return Math.max(0, Math.min(state.view.length, Math.round((e.clientY - r.top + tbody.scrollTop) / ROW_H)));
+}
+function markDropRow(e) {
+  if (state.sort.key !== 'pos' || !dragIds) return clearDropRow();
+  $('dropLine').style.top = dropIndex(e) * ROW_H - tbody.scrollTop + 'px';
+  $('dropLine').classList.remove('hidden');
+}
+function clearDropRow() { $('dropLine').classList.add('hidden'); }
+
 function removeSelectedFromPlaylist() {
-  if (!state.playlist || !state.selected.size) return;
+  if (!dropTarget() || !state.selected.size) return;
   api.removeFromPlaylist(state.playlist, [...state.selected]);
   state.selected.clear();
 }
@@ -679,6 +800,7 @@ function renderDeckInfo(t) {
   }
   const links = [o.discogsUrl && `<a data-href="${esc(o.discogsUrl)}">Discogs ↗</a>`, o.mbUrl && `<a data-href="${esc(o.mbUrl)}">MusicBrainz ↗</a>`].filter(Boolean);
   if (links.length) lines.push(links.join(' &nbsp; '));
+  for (const i of meta.qualityIssues(t)) lines.push(`<span class="q-${i.level}">${Q_ICON[i.level]} ${esc(i.text)}</span>`);
   if (t.error) lines.push(`<span style="color:#ff4d5e">Erreur : ${esc(t.error)}</span>`);
   $('dMeta').innerHTML = lines.join('<br>');
 }
@@ -967,6 +1089,7 @@ function applySnapshot(snap) {
   if (!snap) return;
   state.root = snap.root;
   state.tracks = new Map(snap.tracks.map((t) => [t.id, t]));
+  state.trackStamp++;
   $('rootName').textContent = snap.root;
   $('rootName').title = snap.root;
   if (state.folder && ![...state.tracks.values()].some((t) => t.dir != null && (t.dir === state.folder || t.dir.startsWith(state.folder + SEP)))) state.folder = '';
@@ -988,6 +1111,7 @@ $('btnOpen2').addEventListener('click', chooseFolder);
 
 let lastCount = 0;
 api.onUpdate(({ tracks, stats }) => {
+  state.trackStamp++;
   for (const t of tracks) {
     if (!state.tracks.has(t.id)) state.dirtyTree = true;
     state.tracks.set(t.id, t);
@@ -997,7 +1121,7 @@ api.onUpdate(({ tracks, stats }) => {
   updateStats(stats);
   invalidate();
 });
-api.onRemoved((id) => { state.tracks.delete(id); state.dirtyTree = true; invalidate(); });
+api.onRemoved((id) => { state.tracks.delete(id); state.trackStamp++; state.dirtyTree = true; invalidate(); });
 api.onSnapshot((snap) => applySnapshot(snap));
 
 const t0 = { at: Date.now(), done: 0 };
@@ -1013,7 +1137,7 @@ function updateStats(s) {
     const eta = rate > 0 ? Math.round((s.total - s.analyzed - s.errors) / rate) : 0;
     txt = `Analyse : ${s.analyzed} / ${s.total}${rate > 0 ? ` · ${rate.toFixed(1)} titres/s · reste ~${fmtTime(eta)}` : ''}`;
   } else {
-    txt = `${s.total} titres analysés`;
+    txt = `${s.total} titres analysés${s.quality ? ` · contrôle qualité : ${s.quality} restant(s)` : ''}`;
     t0.at = Date.now(); t0.done = s.analyzed;
   }
   if (s.errors) txt += ` · ${s.errors} erreur(s)`;
