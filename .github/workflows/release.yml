@@ -98,7 +98,8 @@ jobs:
           TAG="v${VERSION}"
           NAME="CrateScope-${VERSION}"
           # one release per version: a push that doesn't bump package.json only builds and tests
-          if gh release view "$TAG" >/dev/null 2>&1; then
+          # (older releases were tagged vX.Y.Z-build.N)
+          if [ -n "$(git tag -l "$TAG" "$TAG-build.*")" ] || gh release view "$TAG" >/dev/null 2>&1; then
             echo "::notice::$TAG already released, bump the version in package.json to publish"
             exit 0
           fi
