@@ -49,6 +49,7 @@
           </div>
           <div class="stat"><span>Tonalité</span><b id="dKey">–</b></div>
           <div class="stat"><span>LUFS</span><b id="dLufs">–</b></div>
+          <div class="stat"><span>Note</span><b id="dRating" class="d-rating"></b></div>
         </div>
         <div id="dChips" class="chips"></div>
         <div id="dMeta" class="d-meta"></div>
@@ -156,8 +157,24 @@
     </form>
   </dialog>
 
+  <dialog id="infoDlg" class="dialog">
+    <form method="dialog">
+      <h2 id="infoTitle">Modifier les infos</h2>
+      <p class="hint" id="infoHint">Les fichiers audio ne sont pas modifiés : les corrections restent dans CrateScope et partent dans les exports (rekordbox XML, CSV, M3U8).</p>
+      <label>Titre <span class="row-inline"><input id="iTitle" class="input wide" type="text" autocomplete="off" /><button type="button" class="btn icon reset-field" data-f="title" title="Revenir au tag du fichier">↺</button></span></label>
+      <label>Artiste <span class="row-inline"><input id="iArtist" class="input wide" type="text" autocomplete="off" /><button type="button" class="btn icon reset-field" data-f="artist" title="Revenir au tag du fichier">↺</button></span></label>
+      <label>Genre (séparés par des virgules ; remplace les genres des tags et en ligne) <span class="row-inline"><input id="iGenre" class="input wide" type="text" autocomplete="off" /><button type="button" class="btn icon reset-field" data-f="genre" title="Revenir aux genres des tags et en ligne">↺</button></span></label>
+      <label>Commentaire <span class="row-inline"><input id="iComment" class="input wide" type="text" autocomplete="off" /><button type="button" class="btn icon reset-field" data-f="comment" title="Effacer le commentaire">↺</button></span></label>
+      <div class="dlg-actions">
+        <button value="cancel" class="btn">Annuler</button>
+        <button value="ok" class="btn primary">Enregistrer</button>
+      </div>
+    </form>
+  </dialog>
+
   <audio id="audio" preload="auto"></audio>
   <script src="../shared/keys.js"></script>
+  <script src="../shared/meta.js"></script>
   <script src="waveform.js"></script>
   <script src="app.js"></script>
 </body>

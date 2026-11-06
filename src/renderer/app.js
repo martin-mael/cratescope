@@ -1,5 +1,5 @@
 'use strict';
-/* global api, keys, waveform */
+/* global api, keys, meta, waveform */
 
 const $ = (id) => document.getElementById(id);
 const state = {
@@ -10,6 +10,7 @@ const state = {
   playlists: [],       // [{ id, name, ids }]
   playlist: null,      // id of the playlist being viewed (instead of a folder)
   sort: { key: 'title', dir: 1 },
+  sort2: null,         // secondary sort (shift-click on a header)
   selected: new Set(),
   anchor: null,        // last clicked id (shift-select)
   cursor: null,        // moving end of a shift selection
@@ -24,19 +25,15 @@ const SEP = navigator.platform.startsWith('Win') ? '\\' : '/';
 const ROW_H = 34;
 
 // ---------- helpers ----------
+// effective metadata (user corrections > tags > online > file name), shared with the exports
 const tags = (t) => (t.probe && t.probe.tags) || {};
-const fTitle = (t) => tags(t).title || t.parsed.title || t.name;
-const fArtist = (t) => tags(t).artist || t.parsed.artist || '';
-const fGenres = (t) => {
-  const g = [];
-  if (tags(t).genre) g.push(...tags(t).genre.split(/[;/,]\s*/));
-  if (t.online && t.online.genres) g.push(...t.online.genres);
-  return [...new Set(g.filter(Boolean))];
-};
-const fStyles = (t) => (t.online && t.online.styles) || [];
-const fYear = (t) => tags(t).year || (t.online && t.online.year) || '';
-const fLabel = (t) => tags(t).label || (t.online && t.online.label) || '';
-const fDur = (t) => (t.analysis && t.analysis.duration) || (t.probe && t.probe.duration) || 0;
+const fTitle = meta.title;
+const fArtist = meta.artist;
+const fGenres = meta.genres;
+const fStyles = meta.styles;
+const fYear = meta.year;
+const fLabel = meta.label;
+const fDur = meta.duration;
 const fmtTime = (s) => { if (s == null || isNaN(s)) return ''; s = Math.max(0, s); return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`; };
 const fmtBpm = (b) => (Math.abs(b - Math.round(b)) < 0.005 ? String(Math.round(b)) : b.toFixed(2).replace(/0$/, ''));
 const LOSSLESS = new Set(['flac', 'wav', 'aif', 'aiff', 'alac', 'ape', 'wv']);
@@ -64,33 +61,95 @@ function miniOf(t) {
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 // ---------- columns ----------
+// width: CSS grid track; hidden: not shown until enabled from the header's context menu
+const stars = (n) => [1, 2, 3, 4, 5].map((i) => `<span class="star${i <= n ? ' on' : ''}" data-star="${i}">★</span>`).join('');
 const COLS = [
-  { key: 'status', label: '', sort: (t) => t.status },
-  { key: 'wave', label: 'Waveform', sort: (t) => fDur(t) },
-  { key: 'title', label: 'Titre', sort: (t) => fTitle(t).toLowerCase() },
-  { key: 'artist', label: 'Artiste', sort: (t) => fArtist(t).toLowerCase() },
-  { key: 'bpm', label: 'BPM', sort: (t) => (t.analysis ? t.analysis.bpm : 1e9) },
-  { key: 'key', label: 'Key', sort: (t) => camSort(t.analysis && t.analysis.camelot) },
-  { key: 'lufs', label: 'LUFS', sort: (t) => (t.analysis && t.analysis.lufs != null ? t.analysis.lufs : -99) },
-  { key: 'genre', label: 'Genre', sort: (t) => (fGenres(t)[0] || '~').toLowerCase() },
-  { key: 'style', label: 'Style', sort: (t) => (fStyles(t)[0] || '~').toLowerCase() },
-  { key: 'time', label: 'Durée', sort: fDur },
-  { key: 'year', label: 'Année', sort: (t) => fYear(t) || '9999' },
-  { key: 'label', label: 'Label', sort: (t) => (fLabel(t) || '~').toLowerCase() },
-  { key: 'fmt', label: 'Format', sort: (t) => t.ext },
+  { key: 'status', label: '', width: '18px', sort: (t) => t.status, cell: (t) => `<div class="dot ${t.status}" title="${t.status === 'error' ? esc(t.error) : t.status}"></div>` },
+  { key: 'wave', label: 'Waveform', width: '136px', sort: (t) => fDur(t), cell: () => '<canvas></canvas>' },
+  { key: 'title', label: 'Titre', width: 'minmax(120px, 2fr)', sort: (t) => meta.fold(fTitle(t)), cell: (t) => `<span${t.meta && t.meta.title ? ' class="edited" title="Tag du fichier : ' + esc(tags(t).title || '–') + '"' : ` title="${esc(t.rel)}"`}>${esc(fTitle(t))}</span>${dupBadge(t)}` },
+  { key: 'artist', label: 'Artiste', width: 'minmax(80px, 1.4fr)', sort: (t) => meta.fold(fArtist(t)), cell: (t) => (t.meta && t.meta.artist ? `<span class="edited" title="Tag du fichier : ${esc(tags(t).artist || '–')}">${esc(fArtist(t))}</span>` : esc(fArtist(t))) },
+  { key: 'rating', label: 'Note', width: '78px', sort: (t) => -meta.rating(t), cell: (t) => stars(meta.rating(t)) },
+  { key: 'bpm', label: 'BPM', width: '62px', sort: (t) => (t.analysis ? t.analysis.bpm : 1e9), cell: bpmCell },
+  { key: 'key', label: 'Key', width: '62px', sort: (t) => camSort(t.analysis && t.analysis.camelot), cell: (t) => (t.analysis ? `<span class="key" style="background:${keyColor(t.analysis.camelot)}">${t.analysis.camelot}</span><span class="key-name">${t.analysis.key}</span>` : '') },
+  { key: 'lufs', label: 'LUFS', width: '58px', sort: (t) => (t.analysis && t.analysis.lufs != null ? t.analysis.lufs : -99), cell: (t) => (t.analysis && t.analysis.lufs != null ? t.analysis.lufs.toFixed(1) : '') },
+  { key: 'genre', label: 'Genre', width: 'minmax(70px, 1fr)', sort: (t) => (fGenres(t)[0] || '~').toLowerCase(), cell: (t) => `${t.meta && t.meta.genre != null ? '<span class="edited">' : '<span>'}${esc(fGenres(t).join(', '))}</span>${t.onlinePending && !fGenres(t).length ? '<span class="dim">…</span>' : ''}` },
+  { key: 'style', label: 'Style', width: 'minmax(70px, 1.2fr)', sort: (t) => (fStyles(t)[0] || '~').toLowerCase(), cell: (t) => esc(fStyles(t).join(', ')) },
+  { key: 'comment', label: 'Commentaire', width: 'minmax(80px, 1.2fr)', hidden: true, sort: (t) => meta.fold(meta.comment(t)) || '~', cell: (t) => esc(meta.comment(t)) },
+  { key: 'album', label: 'Album', width: 'minmax(70px, 1fr)', hidden: true, sort: (t) => meta.fold(meta.album(t)) || '~', cell: (t) => esc(meta.album(t)) },
+  { key: 'time', label: 'Durée', width: '58px', sort: fDur, cell: (t) => (fDur(t) ? fmtTime(fDur(t)) : '') },
+  { key: 'year', label: 'Année', width: '52px', sort: (t) => fYear(t) || '9999', cell: (t) => esc(fYear(t)) },
+  { key: 'label', label: 'Label', width: 'minmax(60px, 0.9fr)', sort: (t) => (fLabel(t) || '~').toLowerCase(), cell: (t) => esc(fLabel(t)) },
+  { key: 'quality', label: 'Qualité', width: '64px', sort: (t) => qualitySort(t), cell: (t) => qualityCell(t) },
+  { key: 'fmt', label: 'Format', width: '92px', sort: (t) => t.ext, cell: (t) => esc(fFormat(t)) },
+  { key: 'played', label: 'Écoutes', width: '62px', hidden: true, sort: (t) => -(playCount(t) || 0), cell: (t) => playCount(t) || '' },
+  { key: 'path', label: 'Chemin', width: 'minmax(100px, 1.5fr)', hidden: true, sort: (t) => t.path.toLowerCase(), cell: (t) => `<span title="${esc(t.path)}">${esc(t.external ? t.path : t.rel)}</span>` },
 ];
+const colByKey = new Map(COLS.map((c) => [c.key, c]));
+const defaultCols = () => COLS.filter((c) => !c.hidden).map((c) => c.key);
+let visibleCols = COLS.filter((c) => !c.hidden);
+
+function bpmCell(t) {
+  const a = t.analysis;
+  if (!a) return '';
+  const tagBpm = parseFloat(tags(t).tagBpm);
+  const diff = tagBpm > 0 && Math.abs(tagBpm - a.bpm) > 1 && Math.abs(tagBpm * 2 - a.bpm) > 1 && Math.abs(tagBpm / 2 - a.bpm) > 1;
+  return `<span${a.bpmDetected ? ` class="bpm-fixed" title="Détecté : ${fmtBpm(a.bpmDetected)}"` : ''}>${fmtBpm(a.bpm)}</span>${diff ? `<span class="bpm-tag-diff" title="Tag du fichier : ${tagBpm}">*</span>` : ''}`;
+}
+
+// visible columns from the settings (in COLS order), grid template on the list
+function applyColumns(keys) {
+  const want = new Set((keys && keys.length ? keys : defaultCols()).filter((k) => colByKey.has(k)));
+  ['status', 'title'].forEach((k) => want.add(k)); // always shown
+  visibleCols = COLS.filter((c) => want.has(c.key));
+  document.querySelector('.list').style.setProperty('--cols', visibleCols.map((c) => c.width).join(' '));
+  for (const el of rowPool.values()) el._sig = '';
+  renderHead();
+  lastRange = '';
+  schedule();
+}
+function toggleColumn(key) {
+  const keys = key === '*reset' ? defaultCols() : visibleCols.map((c) => c.key);
+  if (key !== '*reset') { const i = keys.indexOf(key); if (i >= 0) keys.splice(i, 1); else keys.push(key); }
+  state.settings.columns = keys;
+  api.setSettings({ columns: keys });
+  applyColumns(keys);
+}
 
 function renderHead() {
-  $('thead').innerHTML = COLS.map((c) => `<div data-k="${c.key}" class="${state.sort.key === c.key ? 'sorted' : ''}">${c.label}${state.sort.key === c.key ? (state.sort.dir > 0 ? ' ▲' : ' ▼') : ''}</div>`).join('');
+  const mark = (c) => {
+    if (state.sort.key === c.key) return ` <b>${state.sort.dir > 0 ? '▲' : '▼'}</b>`;
+    if (state.sort2 && state.sort2.key === c.key) return ` <i title="Tri secondaire">²${state.sort2.dir > 0 ? '▲' : '▼'}</i>`;
+    return '';
+  };
+  $('thead').innerHTML = visibleCols.map((c) => `<div data-k="${c.key}" class="${state.sort.key === c.key ? 'sorted' : state.sort2 && state.sort2.key === c.key ? 'sorted2' : ''}" title="Clic : trier · ⇧ clic : tri secondaire · clic droit : colonnes">${c.label}${mark(c)}</div>`).join('');
 }
+// click: primary sort · shift-click: secondary sort (Genre then BPM…)
 $('thead').addEventListener('click', (e) => {
   const k = e.target.closest('[data-k]');
   if (!k) return;
   const key = k.dataset.k;
-  state.sort = { key, dir: state.sort.key === key ? -state.sort.dir : 1 };
+  if (e.shiftKey && state.sort.key !== key && state.sort.key !== 'pos') {
+    state.sort2 = { key, dir: state.sort2 && state.sort2.key === key ? -state.sort2.dir : 1 };
+  } else {
+    state.sort = { key, dir: state.sort.key === key ? -state.sort.dir : 1 };
+    if (!e.shiftKey) state.sort2 = null;
+  }
   renderHead();
   invalidate();
 });
+$('thead').addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  const shown = new Set(visibleCols.map((c) => c.key));
+  api.columnsMenu(COLS.filter((c) => c.label && c.key !== 'title').map((c) => ({ key: c.key, label: c.label, checked: shown.has(c.key) })));
+});
+
+// filled in by the quality / duplicates / history sections below
+function qualityCell() { return ''; }
+function qualitySort() { return 0; }
+function dupBadge() { return ''; }
+function dupSig() { return ''; }
+function playCount() { return 0; }
+function isPlayed() { return false; }
 
 // ---------- filtering ----------
 function inFolder(t) {
@@ -136,11 +195,13 @@ function computeView() {
     state.view = (state.sort.dir > 0 ? out : out.reverse()).map((t) => t.id);
     return;
   }
-  const col = COLS.find((c) => c.key === state.sort.key) || COLS[2];
-  const dir = state.sort.dir;
-  const keyed = out.map((t) => [col.sort(t), fTitle(t).toLowerCase(), t]);
-  keyed.sort((x, y) => (x[0] < y[0] ? -dir : x[0] > y[0] ? dir : x[1] < y[1] ? -1 : x[1] > y[1] ? 1 : 0));
-  state.view = keyed.map((x) => x[2].id);
+  const col = colByKey.get(state.sort.key) || colByKey.get('title');
+  const col2 = state.sort2 && colByKey.get(state.sort2.key);
+  const dir = state.sort.dir, dir2 = col2 ? state.sort2.dir : 1;
+  const keyed = out.map((t) => [col.sort(t), col2 ? col2.sort(t) : 0, meta.fold(fTitle(t)), t]);
+  const cmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+  keyed.sort((x, y) => cmp(x[0], y[0]) * dir || cmp(x[1], y[1]) * dir2 || cmp(x[2], y[2]));
+  state.view = keyed.map((x) => x[3].id);
 }
 
 function invalidate() { state.dirtyView = true; schedule(); }
@@ -162,22 +223,7 @@ const rowPool = new Map(); // index -> element
 let lastRange = '';
 
 function rowHtml(t) {
-  const a = t.analysis;
-  const tagBpm = parseFloat(tags(t).tagBpm);
-  const diff = a && tagBpm > 0 && Math.abs(tagBpm - a.bpm) > 1 && Math.abs(tagBpm * 2 - a.bpm) > 1 && Math.abs(tagBpm / 2 - a.bpm) > 1;
-  return `<div><div class="dot ${t.status}" title="${t.status === 'error' ? esc(t.error) : t.status}"></div></div>
-<div><canvas></canvas></div>
-<div class="c-title" title="${esc(t.rel)}">${esc(fTitle(t))}</div>
-<div class="c-artist">${esc(fArtist(t))}</div>
-<div class="c-bpm${a && a.bpmDetected ? ' bpm-fixed' : ''}"${a && a.bpmDetected ? ` title="Détecté : ${fmtBpm(a.bpmDetected)}"` : ''}>${a ? fmtBpm(a.bpm) : ''}${diff ? `<span class="bpm-tag-diff" title="Tag du fichier : ${tagBpm}">*</span>` : ''}</div>
-<div class="c-key">${a ? `<span class="key" style="background:${keyColor(a.camelot)}">${a.camelot}</span><span class="key-name">${a.key}</span>` : ''}</div>
-<div class="c-lufs">${a && a.lufs != null ? a.lufs.toFixed(1) : ''}</div>
-<div class="c-genre">${esc(fGenres(t).join(', '))}${t.onlinePending && !fGenres(t).length ? '<span class="dim">…</span>' : ''}</div>
-<div class="c-style">${esc(fStyles(t).join(', '))}</div>
-<div class="c-time">${fDur(t) ? fmtTime(fDur(t)) : ''}</div>
-<div class="c-year">${esc(fYear(t))}</div>
-<div class="c-label">${esc(fLabel(t))}</div>
-<div class="c-fmt">${esc(fFormat(t))}</div>`;
+  return visibleCols.map((c) => `<div class="c-${c.key}">${c.cell(t)}</div>`).join('');
 }
 
 function renderRows(force) {
@@ -202,15 +248,17 @@ function renderRows(force) {
       tbody.appendChild(el);
       rowPool.set(i, el);
     }
-    const sig = `${t.id}|${t.edit ? JSON.stringify(t.edit) : ''}|${t.analysis ? t.analysis.version : 0}|${t.status}|${t.onlinePending}|${t.online ? t.online.fetchedAt : 0}|${t.probe ? 1 : 0}`;
+    const sig = `${t.id}|${t.edit ? JSON.stringify(t.edit) : ''}|${t.meta ? JSON.stringify(t.meta) : ''}|${t.analysis ? t.analysis.version : 0}|${t.status}|${t.onlinePending}|${t.online ? t.online.fetchedAt : 0}|${t.probe ? 1 : 0}|${t.quality ? t.quality.v : 0}|${dupSig(t)}|${playCount(t) || 0}|${isPlayed(t) ? 1 : 0}`;
     if (el._sig !== sig) {
       el._sig = sig;
       el.dataset.id = t.id;
       el.innerHTML = rowHtml(t);
-      waveform.drawMini(el.querySelector('canvas'), miniOf(t));
+      const cv = el.querySelector('canvas');
+      if (cv) waveform.drawMini(cv, miniOf(t));
     }
     el.classList.toggle('sel', state.selected.has(t.id));
     el.classList.toggle('loaded', state.loaded === t.id);
+    el.classList.toggle('played', isPlayed(t));
   }
   for (const [i, el] of rowPool) if (!keep.has(i)) { el.remove(); rowPool.delete(i); }
 }
@@ -239,6 +287,13 @@ function rowClick(id, e, frac) {
 }
 tbody.addEventListener('mousedown', (e) => {
   const id = rowFromEvent(e);
+  if (id && e.button === 0 && e.target.dataset.star) { // star in the rating column
+    e.preventDefault();
+    const ids = state.selected.has(id) && state.selected.size > 1 ? [...state.selected] : [id];
+    const t = state.tracks.get(id), n = +e.target.dataset.star;
+    setRating(ids, t && meta.rating(t) === n ? 0 : n); // clicking the current rating clears it
+    return;
+  }
   ctrlClick = e.button === 0 && e.ctrlKey; // reset by any other press (right click, Windows Ctrl+click)
   if (!id || e.button !== 0) return;
   let frac = null;
@@ -597,6 +652,7 @@ function renderDeckInfo(t) {
   $('gAuto').classList.toggle('edited', !!t.edit);
   $('dKey').innerHTML = a.camelot ? `<span class="key" style="background:${keyColor(a.camelot)}">${a.camelot}</span> <span class="key-name">${a.key}</span>` : '…';
   $('dLufs').textContent = a.lufs != null ? a.lufs.toFixed(1) : '…';
+  $('dRating').innerHTML = stars(meta.rating(t));
   const chips = [
     ...fGenres(t).map((g) => `<span class="chip">${esc(g)}</span>`),
     ...fStyles(t).map((s) => `<span class="chip style">${esc(s)}</span>`),
@@ -606,22 +662,25 @@ function renderDeckInfo(t) {
   if (!chips.length && o.notFound) chips.push('<span class="chip tag">introuvable en ligne</span>');
   $('dChips').innerHTML = chips.join('');
   $('dChips').title = [...fGenres(t), ...fStyles(t)].join(', '); // full list when chips are clipped
-  const meta = [];
+  const lines = [];
   const yl = [fYear(t), fLabel(t), o.country].filter(Boolean).join(' · ');
-  if (yl) meta.push(yl);
-  meta.push(`${fFormat(t)} · ${(t.size / 1048576).toFixed(1)} Mo${a.lra != null ? ` · LRA ${a.lra} LU` : ''}`);
+  if (yl) lines.push(yl);
+  lines.push(`${fFormat(t)} · ${(t.size / 1048576).toFixed(1)} Mo${a.lra != null ? ` · LRA ${a.lra} LU` : ''}`);
+  meta.comment(t)
+    ? lines.push(`<span class="d-comment" title="Cliquer pour modifier">💬 ${esc(meta.comment(t))}</span>`)
+    : lines.push('<span class="d-comment add" title="Commentaire : exporté dans rekordbox">＋ commentaire</span>');
   const tagInfo = [tg.tagBpm && `BPM ${tg.tagBpm}`, tg.tagKey && `Key ${tg.tagKey}`].filter(Boolean).join(', ');
-  if (tagInfo) meta.push(`Tags du fichier : ${tagInfo}`);
+  if (tagInfo) lines.push(`Tags du fichier : ${tagInfo}`);
   if (a.bpm && a.gridRmsMs != null) {
     const parts = [a.tempoStable ? `Grille : tempo stable (écart moyen ${a.gridRmsMs} ms)` : `<span class="grid-warn">⚠ Tempo variable (dérive ${a.gridDriftMs} ms) : grille approximative</span>`];
     if (!a.gridEdited) parts.push(a.downbeatConfidence >= 0.2 ? '1er temps détecté' : '<span class="grid-warn">1er temps incertain, à vérifier</span>');
     else parts.push('calage manuel');
-    meta.push(parts.join(' · '));
+    lines.push(parts.join(' · '));
   }
   const links = [o.discogsUrl && `<a data-href="${esc(o.discogsUrl)}">Discogs ↗</a>`, o.mbUrl && `<a data-href="${esc(o.mbUrl)}">MusicBrainz ↗</a>`].filter(Boolean);
-  if (links.length) meta.push(links.join(' &nbsp; '));
-  if (t.error) meta.push(`<span style="color:#ff4d5e">Erreur : ${esc(t.error)}</span>`);
-  $('dMeta').innerHTML = meta.join('<br>');
+  if (links.length) lines.push(links.join(' &nbsp; '));
+  if (t.error) lines.push(`<span style="color:#ff4d5e">Erreur : ${esc(t.error)}</span>`);
+  $('dMeta').innerHTML = lines.join('<br>');
 }
 $('dMeta').addEventListener('click', (e) => { const a = e.target.closest('a[data-href]'); if (a) api.openExternal(a.dataset.href); });
 
@@ -711,6 +770,63 @@ $('bpmInput').addEventListener('keydown', (e) => {
 });
 $('bpmInput').addEventListener('blur', () => endBpmEdit(true));
 
+// ---------- rating, comment, info ----------
+// applies to the selection, or to the track in the deck when nothing is selected
+const targetIds = () => (state.selected.size ? [...state.selected] : state.loaded ? [state.loaded] : []);
+function setRating(ids, n) { if (ids.length) api.setMeta(ids, { rating: n }); }
+$('dRating').addEventListener('click', (e) => {
+  const st = e.target.dataset.star, t = state.loaded && state.tracks.get(state.loaded);
+  if (st && t) setRating([t.id], meta.rating(t) === +st ? 0 : +st);
+});
+$('dMeta').addEventListener('click', (e) => { if (e.target.closest('.d-comment') && state.loaded) editInfo([state.loaded], 'iComment'); });
+
+// one dialog for title / artist / genre / comment, single track or a batch
+const INFO = [['title', 'iTitle'], ['artist', 'iArtist'], ['genre', 'iGenre'], ['comment', 'iComment']];
+const fileValue = { title: (t) => tags(t).title || t.parsed.title || t.name, artist: (t) => tags(t).artist || t.parsed.artist || '', genre: (t) => meta.genres({ ...t, meta: null }).join(', '), comment: () => '' };
+const shownValue = { title: fTitle, artist: fArtist, genre: (t) => fGenres(t).join(', '), comment: meta.comment };
+function editInfo(ids, focus = 'iTitle') {
+  const tracks = ids.map((id) => state.tracks.get(id)).filter(Boolean);
+  if (!tracks.length) return;
+  const dlg = $('infoDlg');
+  $('infoTitle').textContent = tracks.length > 1 ? `Modifier les infos de ${tracks.length} titres` : 'Modifier les infos';
+  const initial = {};
+  for (const [f, el] of INFO) {
+    const vals = [...new Set(tracks.map(shownValue[f]))];
+    const inp = $(el);
+    inp.dataset.reset = '';
+    inp.classList.remove('reset');
+    initial[f] = vals.length === 1 ? vals[0] : '';
+    inp.value = initial[f];
+    inp.placeholder = vals.length > 1 ? '(plusieurs valeurs : laisser vide pour ne pas changer)' : '';
+  }
+  dlg.returnValue = '';
+  dlg.addEventListener('close', () => {
+    if (dlg.returnValue !== 'ok') return;
+    const patch = {};
+    for (const [f, el] of INFO) {
+      const inp = $(el), v = inp.value.trim();
+      if (inp.dataset.reset) { patch[f] = ''; continue; }
+      if (v === initial[f] || (!v && tracks.length > 1)) continue;
+      // typing the file's own value back removes the correction
+      patch[f] = tracks.length === 1 && v === fileValue[f](tracks[0]) ? '' : v;
+    }
+    if (Object.keys(patch).length) api.setMeta(tracks.map((t) => t.id), patch);
+  }, { once: true });
+  dlg.showModal();
+  $(focus).focus();
+  $(focus).select();
+}
+document.querySelectorAll('.reset-field').forEach((b) => b.addEventListener('click', () => {
+  const f = b.dataset.f, inp = $(INFO.find((x) => x[0] === f)[1]);
+  const t = state.tracks.get(targetIds()[0]);
+  inp.dataset.reset = '1';
+  inp.value = t && state.selected.size <= 1 ? fileValue[f](t) : '';
+  inp.placeholder = 'valeur du fichier / en ligne';
+  inp.classList.add('reset');
+}));
+document.querySelectorAll('#infoDlg input').forEach((inp) => inp.addEventListener('input', () => { inp.dataset.reset = ''; inp.classList.remove('reset'); }));
+api.onEditInfo(({ ids, field }) => editInfo(ids, field === 'comment' ? 'iComment' : 'iTitle'));
+
 // ---------- grid editing ----------
 // The grid is anchor + k * beat; bars start every 4 beats from the anchor. Every tool moves the anchor.
 function loadedGrid() {
@@ -778,7 +894,7 @@ audio.addEventListener('seeked', () => { metro.next = null; });
 
 // ---------- keyboard ----------
 window.addEventListener('keydown', (e) => {
-  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || $('nameDlg').open || $('settingsDlg').open) {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || document.querySelector('dialog[open]')) {
     if (e.key === 'Escape') e.target.blur();
     return;
   }
@@ -791,6 +907,8 @@ window.addEventListener('keydown', (e) => {
   else if ((e.metaKey || e.ctrlKey) && e.key === 'f') { e.preventDefault(); $('search').focus(); }
   else if ((e.metaKey || e.ctrlKey) && e.key === 'a') { e.preventDefault(); state.selected = new Set(state.view); renderRows(true); }
   else if (e.key === 'm') $('compatible').click();
+  else if (/^[0-5]$/.test(e.key) && !e.metaKey && !e.ctrlKey && !e.altKey) setRating(targetIds(), +e.key);
+  else if (e.key === 'F2') editInfo(targetIds());
   else if (e.key === 'p') $('noPlaylist').click();
   else if (e.key === '*') fixBpm(2);
   else if (e.key === 'c') toggleMetro();
@@ -960,7 +1078,8 @@ api.onUpdateState(renderUpdate);
 api.updateState().then(renderUpdate);
 
 // ---------- boot ----------
-renderHead();
-api.getSettings().then((s) => { state.settings = s; });
+applyColumns(null);
+api.onColumnToggle(toggleColumn);
+api.getSettings().then((s) => { state.settings = s; applyColumns(s.columns); });
 api.openLast().then((snap) => { if (snap) applySnapshot(snap); else schedule(); })
   .then(() => api.playlists()).then((list) => { state.playlists = list; state.dirtyTree = true; invalidate(); });

@@ -8,6 +8,7 @@ const { pathToFileURL } = require('url');
 const { Worker } = require('worker_threads');
 const { EventEmitter } = require('events');
 const online = require('./online');
+const meta = require('../shared/meta');
 const { ANALYSIS_VERSION } = require('../analysis/dsp');
 
 const needsAnalysis = (t) => !t.analysis || t.analysis.version !== ANALYSIS_VERSION;
@@ -188,6 +189,7 @@ class Library extends EventEmitter {
       mini: valid ? c.mini || null : null,
       online: c && c.online ? c.online : null, // online data survives file edits
       edit: migrateEdit(c), // manual BPM / grid corrections, survive re-analysis
+      meta: (c && c.meta) || null, // user data: rating, comment, corrected title / artist / genre (reset by nothing automatic)
       error: null,
       busy: false,
     };
@@ -294,7 +296,7 @@ class Library extends EventEmitter {
   }
 
   persist(t) {
-    this.cache.data[t.path] = { size: t.size, mtime: t.mtime, probe: t.probe, analysis: t.analysis, mini: t.mini, online: t.online, edit: t.edit };
+    this.cache.data[t.path] = { size: t.size, mtime: t.mtime, probe: t.probe, analysis: t.analysis, mini: t.mini, online: t.online, edit: t.edit, meta: t.meta };
     this.cache.save();
   }
 
@@ -316,9 +318,8 @@ class Library extends EventEmitter {
 
   // ---------- online enrichment ----------
   queryFor(t) {
-    const tg = (t.probe && t.probe.tags) || {};
-    const artist = tg.artist || t.parsed.artist;
-    const title = tg.title || t.parsed.title;
+    const artist = meta.artist(t);
+    const title = meta.title(t);
     return { artist, title: (title || '').replace(/\s*\((original mix|extended mix)\)/i, '') };
   }
 
@@ -374,6 +375,24 @@ class Library extends EventEmitter {
 
   refetchOnline(ids) {
     for (const id of ids) { const t = this.tracks.get(id); if (t) this.queueOnline(t, true); }
+  }
+
+  // patch: { rating?: 0-5, comment?, title?, artist?, genre? }; '' / null / 0 = back to the file / online value
+  setMeta(ids, patch) {
+    for (const id of ids) {
+      const t = this.tracks.get(id);
+      if (!t) continue;
+      const m = { ...(t.meta || {}) };
+      for (const [k, v] of Object.entries(patch)) {
+        if (!['rating', 'comment', 'title', 'artist', 'genre'].includes(k)) continue;
+        if (k === 'rating') { const r = Math.round(+v); if (r >= 1 && r <= 5) m.rating = r; else delete m.rating; continue; }
+        const str = v == null ? '' : String(v).trim();
+        if (str) m[k] = str.slice(0, 500); else delete m[k];
+      }
+      t.meta = Object.keys(m).length ? m : null;
+      this.persist(t);
+      this.dirty.add(id);
+    }
   }
 
   // ---------- renderer data ----------

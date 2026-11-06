@@ -5,9 +5,13 @@
 const fs = require('fs');
 const { pathToFileURL } = require('url');
 const { audioStartTime } = require('../analysis/ffmpeg');
+const meta = require('../shared/meta');
 
 // formats rekordbox can import, mapped to its "Kind" strings
 const KIND = { mp3: 'MP3 File', wav: 'WAV File', aif: 'AIFF File', aiff: 'AIFF File', flac: 'FLAC File', m4a: 'M4A File', aac: 'M4A File', mp4: 'M4A File', alac: 'M4A File' };
+
+// rekordbox stores 0-5 stars as 0 / 51 / 102 / 153 / 204 / 255
+const RATING = [0, 51, 102, 153, 204, 255];
 
 const xml = (v) => String(v == null ? '' : v)
   // characters XML 1.0 forbids, then entities (the spec asks for all five)
@@ -83,8 +87,7 @@ function buildXml(tracks, { playlistName = 'CrateScope', playlists = null, today
     const kind = KIND[t.ext];
     if (!kind || !a || !a.bpm) { skipped.push(t); continue; }
     const tg = (t.probe && t.probe.tags) || {};
-    const o = t.online || {};
-    const genres = [...new Set([...(tg.genre ? tg.genre.split(/[;/,]\s*/) : []), ...(o.genres || [])].filter(Boolean))];
+    const genres = meta.genres(t);
     const beat = 60 / a.bpm;
     // beat number in the bar (1-4) of the first grid beat
     const battito = ((Math.round((a.beatOffset - a.downbeat) / beat) % 4) + 4) % 4 + 1;
@@ -94,10 +97,10 @@ function buildXml(tracks, { playlistName = 'CrateScope', playlists = null, today
       id,
       xml: `    <TRACK ${attrs({
         TrackID: id,
-        Name: tg.title || t.parsed.title || t.name,
-        Artist: tg.artist || t.parsed.artist || '',
+        Name: meta.title(t),
+        Artist: meta.artist(t),
         Composer: tg.composer || '',
-        Album: tg.album || o.album || '',
+        Album: meta.album(t),
         Grouping: tg.grouping || '',
         Genre: genres.join(', '),
         Kind: kind,
@@ -105,19 +108,19 @@ function buildXml(tracks, { playlistName = 'CrateScope', playlists = null, today
         TotalTime: Math.round(a.duration || (t.probe && t.probe.duration) || 0),
         DiscNumber: 0,
         TrackNumber: parseInt(tg.trackNo, 10) || 0,
-        Year: parseInt(tg.year || o.year, 10) || 0,
+        Year: parseInt(meta.year(t), 10) || 0,
         AverageBpm: num(a.bpm, 2),
         DateAdded: date,
         BitRate: (t.probe && t.probe.bitrate) || 0,
         SampleRate: (t.probe && t.probe.sampleRate) || 44100,
-        // Camelot first: sortable in rekordbox's Comments column, styles after
-        Comments: [a.camelot, ...(o.styles || [])].filter(Boolean).join(' · '),
+        // Camelot first: sortable in rekordbox's Comments column, then the user's comment, then styles
+        Comments: [a.camelot, meta.comment(t), ...meta.styles(t)].filter(Boolean).join(' · '),
         PlayCount: 0,
-        Rating: 0,
+        Rating: RATING[meta.rating(t)] || 0,
         Location: location(t.path),
         Remixer: '',
         Tonality: a.key || '',
-        Label: tg.label || o.label || '',
+        Label: meta.label(t),
         Mix: '',
       })}>
       <TEMPO ${attrs({ Inizio: num(a.beatOffset + (offsets.get(t.path) || 0), 3), Bpm: num(a.bpm, 2), Metro: '4/4', Battito: battito })}/>

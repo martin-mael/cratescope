@@ -7,6 +7,7 @@ const { pathToFileURL } = require('url');
 const { Library, hashId, AUDIO_EXT } = require('./library');
 const { Playlists } = require('./playlists');
 const { Updater } = require('./updater');
+const meta = require('../shared/meta');
 const { buildXml, mp3Offsets } = require('./rekordbox');
 const { extractCover, transcodeForPlayback } = require('../analysis/ffmpeg');
 
@@ -35,6 +36,7 @@ const DEFAULTS = {
   discogsKey: '',
   discogsSecret: '',
   autoUpdate: true,
+  columns: null, // visible list columns (null = default set)
   lastRoot: null,
 };
 
@@ -57,6 +59,8 @@ function createWindow() {
     minWidth: 1000,
     minHeight: 600,
     backgroundColor: '#0e0f12',
+    // dev smoke tests open without taking the focus (keys typed elsewhere must not reach them)
+    ...(process.env.CRATESCOPE_SMOKE && !app.isPackaged ? { show: false } : {}),
     titleBarStyle: isMac ? 'hiddenInset' : 'hidden',
     ...(isMac
       ? { trafficLightPosition: { x: 14, y: 14 } }
@@ -74,7 +78,7 @@ function createWindow() {
     return { action: 'deny' };
   });
   win.webContents.on('will-navigate', (e) => e.preventDefault());
-  if (process.env.CRATESCOPE_SMOKE && !app.isPackaged) require('./smoke')(win, process.env.CRATESCOPE_SMOKE);
+  if (process.env.CRATESCOPE_SMOKE && !app.isPackaged) { win.showInactive(); require('./smoke')(win, process.env.CRATESCOPE_SMOKE); }
 }
 
 function send(channel, payload) {
@@ -148,6 +152,7 @@ ipcMain.on('library:reanalyzeStale', () => library.reanalyzeStale());
 ipcMain.on('library:refetch', (_e, ids) => library.refetchOnline(ids));
 ipcMain.on('library:bpm', (_e, { ids, factor }) => library.setBpm(ids, factor));
 ipcMain.on('library:grid', (_e, { id, patch }) => library.setGrid(id, patch));
+ipcMain.on('library:meta', (_e, { ids, patch }) => library.setMeta(ids, patch));
 
 ipcMain.handle('track:waves', (_e, id) => library.readWaves(id));
 
@@ -209,6 +214,17 @@ ipcMain.on('track:context', (e, { ids, playlist }) => {
     { label: tracks.length > 1 ? `Ré-analyser (${tracks.length})` : 'Ré-analyser', click: () => library.reanalyze(tracks.map((t) => t.id)) },
     { label: 'BPM ×2   ( * )', click: () => library.setBpm(tracks.map((t) => t.id), 2) },
     { label: 'BPM ÷2   ( / )', click: () => library.setBpm(tracks.map((t) => t.id), 0.5) },
+    {
+      label: 'Note',
+      submenu: [0, 1, 2, 3, 4, 5].map((n) => ({
+        label: n ? '★'.repeat(n) + `   ( ${n} )` : 'Aucune   ( 0 )', type: 'radio',
+        checked: tracks.every((t) => meta.rating(t) === n), click: () => library.setMeta(tracks.map((t) => t.id), { rating: n }),
+      })),
+    },
+    { label: tracks.length > 1 ? `Modifier les infos (${tracks.length})…   ( F2 )` : 'Modifier les infos…   ( F2 )', click: () => send('meta:edit', { ids, field: 'title' }) },
+    { label: 'Modifier le commentaire…', click: () => send('meta:edit', { ids, field: 'comment' }) },
+    { label: 'Rétablir les infos du fichier', enabled: tracks.some((t) => t.meta && (t.meta.title || t.meta.artist || t.meta.genre != null)), click: () => library.setMeta(tracks.map((t) => t.id), { title: '', artist: '', genre: '' }) },
+    { type: 'separator' },
     { label: 'Grille automatique (annuler BPM et calage manuels)', enabled: tracks.some((t) => t.edit), click: () => tracks.forEach((t) => library.setGrid(t.id, { reset: true })) },
     { type: 'separator' },
     { label: 'Re-chercher les métadonnées en ligne', click: () => library.refetchOnline(tracks.map((t) => t.id)) },
@@ -283,9 +299,8 @@ async function writeRekordbox(tracks, opts, defaultName) {
 
 function m3u(tracks) {
   return ['#EXTM3U', ...tracks.flatMap((t) => {
-    const tg = (t.probe && t.probe.tags) || {};
-    const dur = Math.round((t.analysis && t.analysis.duration) || (t.probe && t.probe.duration) || -1);
-    return [`#EXTINF:${dur},${tg.artist || t.parsed.artist} - ${tg.title || t.parsed.title}`, t.path];
+    const dur = Math.round(meta.duration(t) || -1);
+    return [`#EXTINF:${dur},${meta.artist(t)} - ${meta.title(t)}`, t.path];
   })].join('\n');
 }
 
@@ -332,12 +347,12 @@ ipcMain.handle('export', async (_e, { format, ids, name }) => {
   if (r.canceled || !r.filePath) return false;
   if (format === 'csv') {
     const q = (v) => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
-    const head = ['Path', 'Artist', 'Title', 'BPM', 'Key', 'Camelot', 'LUFS', 'Duration', 'Genre', 'Style', 'Year', 'Label'];
+    const head = ['Path', 'Artist', 'Title', 'BPM', 'Key', 'Camelot', 'LUFS', 'Duration', 'Genre', 'Style', 'Year', 'Label', 'Rating', 'Comment'];
     const rows = tracks.map((t) => {
-      const tg = (t.probe && t.probe.tags) || {}, a = library.effectiveAnalysis(t) || {}, o = t.online || {};
-      return [t.path, tg.artist || t.parsed.artist, tg.title || t.parsed.title, a.bpm, a.key, a.camelot, a.lufs,
-        a.duration ? a.duration.toFixed(1) : '', [tg.genre, ...(o.genres || [])].filter(Boolean).join('; '),
-        (o.styles || []).join('; '), tg.year || o.year, tg.label || o.label].map(q).join(',');
+      const a = library.effectiveAnalysis(t) || {};
+      return [t.path, meta.artist(t), meta.title(t), a.bpm, a.key, a.camelot, a.lufs,
+        a.duration ? a.duration.toFixed(1) : '', meta.genres(t).join('; '), meta.styles(t).join('; '),
+        meta.year(t), meta.label(t), meta.rating(t) || '', meta.comment(t)].map(q).join(',');
     });
     fs.writeFileSync(r.filePath, [head.join(','), ...rows].join('\n'));
   } else {
@@ -345,6 +360,15 @@ ipcMain.handle('export', async (_e, { format, ids, name }) => {
   }
   shell.showItemInFolder(r.filePath);
   return true;
+});
+
+// header right click: show / hide columns
+ipcMain.on('columns:menu', (e, items) => {
+  Menu.buildFromTemplate([
+    ...items.map((c) => ({ label: c.label, type: 'checkbox', checked: c.checked, click: () => send('columns:toggle', c.key) })),
+    { type: 'separator' },
+    { label: 'Colonnes par défaut', click: () => send('columns:toggle', '*reset') },
+  ]).popup({ window: BrowserWindow.fromWebContents(e.sender) });
 });
 
 // ---------- updates ----------

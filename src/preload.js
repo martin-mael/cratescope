@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld('api', {
   refetch: (ids) => ipcRenderer.send('library:refetch', ids),
   setBpm: (ids, factor) => ipcRenderer.send('library:bpm', { ids, factor }),
   setGrid: (id, patch) => ipcRenderer.send('library:grid', { id, patch }),
+  setMeta: (ids, patch) => ipcRenderer.send('library:meta', { ids, patch }),
   waves: (id) => ipcRenderer.invoke('track:waves', id),
   cover: (id) => ipcRenderer.invoke('track:cover', id),
   playable: (id) => ipcRenderer.invoke('track:playable', id),
@@ -37,6 +38,7 @@ contextBridge.exposeInMainWorld('api', {
   deletePlaylist: (id) => ipcRenderer.send('playlists:delete', id),
   playlistMenu: (id) => ipcRenderer.send('playlists:context', id),
   pathForFile: (file) => webUtils.getPathForFile(file),
+  columnsMenu: (items) => ipcRenderer.send('columns:menu', items),
   updateState: () => ipcRenderer.invoke('update:state'),
   checkUpdate: () => ipcRenderer.invoke('update:check'),
   downloadUpdate: () => ipcRenderer.invoke('update:download'),
@@ -50,4 +52,6 @@ contextBridge.exposeInMainWorld('api', {
   onRenamePlaylist: on('playlists:rename'),
   onExportDone: on('export:done'),
   onUpdateState: on('update:state'),
+  onColumnToggle: on('columns:toggle'),
+  onEditInfo: on('meta:edit'),
 });
