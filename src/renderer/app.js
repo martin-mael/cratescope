@@ -216,10 +216,7 @@ function dupTip(t, d) {
     const mark = i === 0 && d.best ? '<span class="q-ok">✓</span>' : '•';
     return `<div class="${id === t.id ? 'tip-me' : ''}">${mark} ${esc(fFormat(c))} · ${(c.size / 1048576).toFixed(1)} Mo${q}${id === t.id ? ' <i>(celle-ci)</i>' : ''}<br><span class="tip-path">${esc(c.external ? c.path : c.rel)}</span></div>`;
   }).join('');
-  const verdict = d.best ? 'Celle-ci est la meilleure version : à garder (vrai lossless, puis bitrate, puis taille).'
-    : d.tie ? 'Copies équivalentes (même format, même débit, même taille) : une seule suffit.'
-      : 'Une meilleure copie existe (✓) : celle-ci peut être retirée de ta bibliothèque.';
-  return `<b>${d.size} copies de ce titre</b><br>Même artiste, même titre et même durée à 2 s près.<div class="tip-sep"></div>${lines}<div class="tip-sep"></div>${verdict}`;
+  return `<b>${d.size} copies de ce titre</b><br>Même artiste, même titre et même durée à 2 s près.<div class="tip-sep"></div>${lines}`;
 }
 function dupBadge(t) {
   const d = dups().get(t.id);
