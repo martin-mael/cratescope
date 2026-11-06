@@ -197,13 +197,17 @@ ipcMain.on('track:drag', (e, { ids, image }) => {
   e.sender.startDrag(files.length === 1 ? { file: files[0], icon } : { files, icon });
 });
 
-ipcMain.on('track:context', (e, { ids, playlist }) => {
+ipcMain.on('track:context', (e, { ids, playlist, inQueue }) => {
   const tracks = ids.map((id) => library.get(id)).filter(Boolean);
   if (!tracks.length) return;
   const one = tracks[0];
   const paths = tracks.map((t) => t.path);
   const current = playlist && playlists.get(playlist);
   Menu.buildFromTemplate([
+    { label: 'Lire ensuite', click: () => send('queue:menu', { ids, op: 'next' }) },
+    { label: "Ajouter à la file d'attente   ( Q )", click: () => send('queue:menu', { ids, op: 'add' }) },
+    ...(inQueue ? [{ label: 'Retirer de la file   ( ⌫ )', click: () => send('queue:menu', { ids, op: 'remove' }) }] : []),
+    { type: 'separator' },
     {
       label: tracks.length > 1 ? `Ajouter ${tracks.length} titres à une playlist` : 'Ajouter à une playlist',
       submenu: [

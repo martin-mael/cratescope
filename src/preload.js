@@ -26,7 +26,7 @@ contextBridge.exposeInMainWorld('api', {
   cover: (id) => ipcRenderer.invoke('track:cover', id),
   playable: (id) => ipcRenderer.invoke('track:playable', id),
   startDrag: (ids, image) => ipcRenderer.send('track:drag', { ids, image }),
-  contextMenu: (ids, playlist) => ipcRenderer.send('track:context', { ids, playlist }),
+  contextMenu: (ids, playlist, inQueue) => ipcRenderer.send('track:context', { ids, playlist, inQueue }),
   exportList: (format, ids, name) => ipcRenderer.invoke('export', { format, ids, name }),
   exportPlaylists: (format, ids) => ipcRenderer.invoke('export:playlists', { format, ids }),
   copyToDevice: (ids) => ipcRenderer.send('copy:start', ids),
@@ -69,4 +69,5 @@ contextBridge.exposeInMainWorld('api', {
   onUpdateState: on('update:state'),
   onColumnToggle: on('columns:toggle'),
   onEditInfo: on('meta:edit'),
+  onQueue: on('queue:menu'),
 });

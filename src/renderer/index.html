@@ -61,13 +61,16 @@ dup:yes  played:yes|no  pl:no (dans aucune playlist)
         </div>
         <div id="dChips" class="chips"></div>
         <div id="dMeta" class="d-meta"></div>
+        <div id="upNext" class="up-next hidden"></div>
       </div>
     </div>
     <div class="deck-right">
       <canvas id="zoomWave" class="zoom-wave"></canvas>
       <canvas id="overWave" class="over-wave"></canvas>
       <div class="transport">
+        <button id="btnRestart" class="btn restart" title="Retour au début (Début / Fn + ←)">⏮</button>
         <button id="btnPlay" class="btn play" title="Lecture / pause (espace)">▶</button>
+        <button id="btnNext" class="btn restart" title="Titre suivant">⏭</button>
         <span id="tPos" class="time">0:00</span>
         <span class="time dim">/</span>
         <span id="tDur" class="time dim">0:00</span>

@@ -9,7 +9,8 @@ const state = {
   folder: '',          // '' = root
   playlists: [],       // [{ id, name, ids }]
   playlist: null,      // id of the playlist being viewed (instead of a folder)
-  special: null,       // 'dups' | 'hist:<session id>': a view of its own (instead of a folder / playlist)
+  special: null,       // 'queue' | 'dups' | 'hist:<session id>': a view of its own (instead of a folder / playlist)
+  queue: [],           // up next (track ids), for this launch only
   played: new Set(),   // ids played (>= 30 s) during this session
   history: { sessions: [], counts: {} }, // from main (history.json)
   histOpen: false,     // history sessions listed in the sidebar
@@ -264,6 +265,7 @@ function viewSource() {
   const pl = currentPlaylist();
   if (pl && pl.query != null) return { list: [...state.tracks.values()], terms: query.parse(pl.query) };
   if (pl) return { list: pl.ids.map((id) => state.tracks.get(id)).filter(Boolean), ordered: true };
+  if (state.special === 'queue') return { list: queueTracks(), ordered: true };
   if (state.special === 'dups') { const d = dups(); return { list: [...state.tracks.values()].filter((t) => d.has(t.id)), grouped: true }; }
   if (state.special && state.special.startsWith('hist:')) return { list: historyTracks(state.special.slice(5)), ordered: true };
   return { list: state.tracks.values(), folder: true };
@@ -381,7 +383,7 @@ function renderEmpty() {
   const plain = pl && pl.query == null;
   let show = !folderTracks, big = state.root && !folderTracks ? 'Aucun fichier audio trouvé ici' : 'Ouvre un dossier de musique';
   if (plain) { show = !pl.ids.length; big = 'Playlist vide'; }
-  else if (pl || state.special) { show = !state.view.length; big = pl ? 'Aucun titre ne correspond à cette recherche' : state.special === 'dups' ? 'Aucun doublon' : 'Session vide'; }
+  else if (pl || state.special) { show = !state.view.length; big = pl ? 'Aucun titre ne correspond à cette recherche' : state.special === 'dups' ? 'Aucun doublon' : state.special === 'queue' ? "File d'attente vide" : 'Session vide'; }
   $('emptyState').classList.toggle('hidden', !show);
   $('emptyBig').textContent = big;
   $('emptyText').classList.toggle('hidden', !!(pl || state.special));
@@ -434,8 +436,8 @@ tbody.addEventListener('contextmenu', (e) => {
   const id = rowFromEvent(e);
   if (ctrlClick) { ctrlClick = false; e.preventDefault(); return; }
   if (!id) return;
-  if (!state.selected.has(id)) select(id, {}, { load: false }); // right click selects, never loads
-  api.contextMenu([...state.selected], state.playlist);
+  if (!state.selected.has(id)) select(id, {}); // right click selects
+  api.contextMenu([...state.selected], state.playlist, state.special === 'queue');
 });
 // rows are dragged as real files (drop into rekordbox, the Finder… or onto a playlist)
 let dragIds = null;
@@ -492,7 +494,8 @@ function selectRange(id) {
   state.cursor = id;
 }
 
-function select(id, e, { load = true } = {}) {
+// selecting never touches the deck: double click / Enter loads and plays
+function select(id, e) {
   if (e.shiftKey && rangeAnchor()) {
     state.anchor = rangeAnchor();
     selectRange(id);
@@ -502,8 +505,6 @@ function select(id, e, { load = true } = {}) {
   } else {
     state.selected = new Set([id]);
     state.anchor = state.cursor = id;
-    // browsing: single click loads into the deck, keeps playing if we were playing
-    if (load) loadTrack(id, { play: !audio.paused });
   }
   renderRows(true);
 }
@@ -596,9 +597,12 @@ function renderPlaylists() {
 // ---------- views: duplicates, history ----------
 function renderViews() {
   const groups = new Set([...dups().values()].map((d) => d.group)).size;
-  const rows = [`<div class="pl view ${state.special === 'dups' ? 'active' : ''}" data-view="dups" data-tip="${esc('<b>Doublons</b><br>Titres présents en plusieurs exemplaires. « meilleure » : la copie à garder.')}">
-    <span>⧉</span><span class="nm">Doublons</span><span class="ct">${groups || ''}</span></div>`];
+  const q = queueTracks().length;
+  const rows = [`<div class="pl view ${state.special === 'queue' ? 'active' : ''}" data-view="queue" data-tip="${esc("<b>File d'attente</b><br>Titres à lire ensuite, dans l'ordre. File vide : la lecture continue dans la liste affichée.")}">
+    <span>▤</span><span class="nm">File d'attente</span><span class="ct">${q || ''}</span></div>`];
   rows.push(...historyRows());
+  rows.push(`<div class="pl view ${state.special === 'dups' ? 'active' : ''}" data-view="dups" data-tip="${esc('<b>Doublons</b><br>Titres présents en plusieurs exemplaires. « meilleure » : la copie à garder.')}">
+    <span>⧉</span><span class="nm">Doublons</span><span class="ct">${groups || ''}</span></div>`);
   $('views').innerHTML = rows.join('');
 }
 function showSpecial(key) {
@@ -620,6 +624,60 @@ $('views').addEventListener('click', async (e) => {
   if (el.dataset.view.startsWith('hist:')) await api.historyOpen(el.dataset.view.slice(5)); // load tracks from other folders
   showSpecial(el.dataset.view);
 });
+
+// rows dragged onto « File d'attente » in the sidebar
+$('views').addEventListener('dragover', (e) => {
+  const el = e.target.closest('[data-view="queue"]');
+  document.querySelectorAll('.pl.drop').forEach((x) => x !== el && x.classList.remove('drop'));
+  if (!el || !dragIds) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'copy';
+  el.classList.add('drop');
+});
+$('views').addEventListener('dragleave', (e) => { if (!$('views').contains(e.relatedTarget)) document.querySelectorAll('.pl.drop').forEach((x) => x.classList.remove('drop')); });
+$('views').addEventListener('drop', (e) => {
+  e.preventDefault();
+  document.querySelectorAll('.pl.drop').forEach((x) => x.classList.remove('drop'));
+  if (e.target.closest('[data-view="queue"]') && dragIds) queueAdd(dragIds);
+  dragIds = null;
+});
+
+// ---------- queue ----------
+// a track can be queued once; tracks no longer loaded (other folder opened) are skipped
+function queueTracks() { return state.queue.map((id) => state.tracks.get(id)).filter(Boolean); }
+function queueChanged() { renderViews(); renderUpNext(); if (state.special === 'queue') invalidate(); }
+// moves / inserts ids (in view order) before `before` (end when missing)
+function queueInsert(ids, before) {
+  const order = state.special === 'queue' ? state.view : state.queue;
+  ids = [...ids].sort((a, b) => order.indexOf(a) - order.indexOf(b));
+  const rest = state.queue.filter((id) => !ids.includes(id));
+  const at = before && rest.includes(before) ? rest.indexOf(before) : rest.length;
+  rest.splice(at, 0, ...ids);
+  state.queue = rest;
+  queueChanged();
+}
+function queueAdd(ids, next = false) {
+  ids = ids.filter((id) => state.tracks.has(id));
+  if (!ids.length) return;
+  queueInsert(ids, next ? state.queue.find((id) => !ids.includes(id)) : null);
+  flash(next ? (ids.length > 1 ? `${ids.length} titres lus ensuite` : 'Lu ensuite') : `${ids.length > 1 ? ids.length + ' titres ajoutés' : 'Ajouté'} à la file d'attente`);
+}
+function queueRemove(ids) {
+  const drop = new Set(ids);
+  state.queue = state.queue.filter((id) => !drop.has(id));
+  if (state.special === 'queue') state.selected.clear();
+  queueChanged();
+}
+api.onQueue(({ ids, op }) => (op === 'remove' ? queueRemove(ids) : queueAdd(ids, op === 'next')));
+function renderUpNext() {
+  const q = queueTracks();
+  const el = $('upNext');
+  el.classList.toggle('hidden', !q.length);
+  if (!q.length) return;
+  const t = q[0], a = meta.artist(t);
+  el.innerHTML = `Ensuite : <b>${esc((a ? a + ' – ' : '') + meta.title(t))}</b>${q.length > 1 ? ` · +${q.length - 1}` : ''}`;
+}
+$('upNext').addEventListener('click', () => showSpecial('queue'));
 
 // a track counts as played after 30 s of actual playback (seeking around doesn't count)
 const PLAYED_AFTER = 30;
@@ -745,6 +803,7 @@ $('plList').addEventListener('drop', (e) => {
 const listEl = document.querySelector('.list');
 const dropTarget = () => { const p = currentPlaylist(); return p && p.query == null ? p : null; };
 listEl.addEventListener('dragover', (e) => {
+  if (state.special === 'queue' && dragIds) { markDropRow(e); e.preventDefault(); return; }
   if (!dropTarget() || !accepts(e)) return;
   // reordering: the row under the pointer shows where the dragged tracks land
   markDropRow(e);
@@ -754,6 +813,14 @@ listEl.addEventListener('dragover', (e) => {
 listEl.addEventListener('dragleave', (e) => { if (!listEl.contains(e.relatedTarget)) { listEl.classList.remove('drop'); clearDropRow(); } });
 listEl.addEventListener('drop', (e) => {
   listEl.classList.remove('drop');
+  if (state.special === 'queue' && dragIds) { // reorder (or add) at the drop position
+    e.preventDefault();
+    const before = state.view[dropIndex(e)];
+    clearDropRow();
+    queueInsert(dragIds, before);
+    dragIds = null;
+    return;
+  }
   if (!dropTarget()) return;
   e.preventDefault();
   const at = dropIndex(e);
@@ -812,10 +879,14 @@ audio.volume = 0.9;
 let loadSeq = 0;
 let dragging = null;
 
-async function loadTrack(id, { play = false, at = 0 } = {}) {
+async function loadTrack(id, { play = false, at = 0, from = null } = {}) {
   const t = state.tracks.get(id);
   if (!t) return;
+  // where playback continues once the queue is empty: the list the track was started from
+  if (from === 'ctx') state.ctxAt = id;
+  else if (from !== 'queue' && state.special !== 'queue') { state.playCtx = [...state.view]; state.ctxAt = id; }
   const seq = ++loadSeq;
+  if (state.queue.includes(id)) queueRemove([id]); // playing it: no longer up next
   if (state.loaded !== id) {
     state.loaded = id;
     state.waves = null;
@@ -928,11 +999,23 @@ function loop() {
 }
 requestAnimationFrame(loop); // first frame runs after the whole script (metronome) is defined
 ['pause', 'play', 'seeked', 'loadedmetadata'].forEach((ev) => audio.addEventListener(ev, drawDeck));
-audio.addEventListener('ended', () => moveSelection(1)); // auto-advance like a crate preview
+audio.addEventListener('ended', playNext);
+// end of a track: the first one in the queue, else the next one in the list it was started from
+$('btnNext').addEventListener('click', playNext);
+function playNext() {
+  const q = queueTracks().filter((t) => t.id !== state.loaded);
+  if (q.length) { loadTrack(q[0].id, { play: true, from: 'queue' }); return; }
+  const list = state.playCtx || state.view;
+  const i = list.indexOf(state.ctxAt || state.loaded);
+  if (i >= 0 && i + 1 < list.length) loadTrack(list[i + 1], { play: true, from: 'ctx' });
+}
 
 $('btnPlay').addEventListener('click', togglePlay);
+// back to the start of the track, playing or paused as it was
+$('btnRestart').addEventListener('click', restart);
+function restart() { if (state.loaded && audio.duration) audio.currentTime = 0; }
 function togglePlay() {
-  if (!state.loaded) { if (state.view[0]) loadTrack(state.view[0], { play: true }); return; }
+  if (!state.loaded) { const id = state.anchor || state.view[0]; if (id) loadTrack(id, { play: true }); return; }
   if (audio.paused) audio.play().catch(() => {}); else audio.pause();
 }
 $('overWave').addEventListener('mousedown', (e) => {
@@ -1126,12 +1209,14 @@ window.addEventListener('keydown', (e) => {
   else if (e.key === 'ArrowRight' && audio.duration) audio.currentTime = Math.min(audio.duration, audio.currentTime + (e.shiftKey ? 30 : 8));
   else if (e.key === 'ArrowLeft' && audio.duration) audio.currentTime = Math.max(0, audio.currentTime - (e.shiftKey ? 30 : 8));
   else if (e.key === 'Enter' && state.anchor) loadTrack(state.anchor, { play: true });
+  else if (e.key === 'Home') { e.preventDefault(); restart(); }
   else if ((e.metaKey || e.ctrlKey) && e.key === 'f') { e.preventDefault(); $('search').focus(); }
   else if ((e.metaKey || e.ctrlKey) && e.key === 'a') { e.preventDefault(); state.selected = new Set(state.view); renderRows(true); }
   else if (e.key === 'm') $('compatible').click();
   else if (/^[0-5]$/.test(e.key) && !e.metaKey && !e.ctrlKey && !e.altKey) setRating(targetIds(), +e.key);
   else if (e.key === 'F2') editInfo(targetIds());
   else if (e.key === 'p') $('noPlaylist').click();
+  else if (e.key === 'q' && !e.metaKey && !e.ctrlKey) queueAdd(targetIds());
   else if (e.key === '*') fixBpm(2);
   else if (e.key === 'c') toggleMetro();
   else if (e.key === '[') grid.shiftBar(-1);
@@ -1142,6 +1227,7 @@ window.addEventListener('keydown', (e) => {
   else if (e.key === 'G') grid.snapHere();
   else if (e.key === '/') { e.preventDefault(); fixBpm(0.5); }
   else if ((e.key === 'Backspace' || e.key === 'Delete') && state.playlist) { e.preventDefault(); removeSelectedFromPlaylist(); }
+  else if ((e.key === 'Backspace' || e.key === 'Delete') && state.special === 'queue' && state.selected.size) { e.preventDefault(); queueRemove([...state.selected]); }
 });
 
 // ---------- filters ----------

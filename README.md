@@ -25,8 +25,8 @@ npm start -- ~/Music/Crate     # ouvre directement un dossier
 
 ## Utilisation
 
-- Clic = charger dans le deck (lecture continue si déjà en lecture), double-clic / Entrée = lire, clic sur une mini-waveform = lire depuis ce point.
-- Espace lecture/pause, ↑/↓ titre suivant/précédent, ←/→ avance de 8 s (Maj : 30 s), molette sur la waveform = zoom, glisser = scratch.
+- Clic = sélectionner (le titre en cours continue), double-clic / Entrée = lire, clic sur une mini-waveform = lire depuis ce point. En fin de titre, le premier de la [file d'attente](#file-dattente) démarre, sinon le suivant de la liste.
+- Espace lecture/pause (lit le titre sélectionné si rien n'est chargé), ⏮ ou touche Début = retour au début du titre (garde lecture / pause), ↑/↓ déplacer la sélection, ←/→ avance de 8 s (Maj : 30 s), molette sur la waveform = zoom, glisser = scratch.
 - **Mixables** (touche `m`) : n'affiche que les titres compatibles harmoniquement avec le titre chargé (Camelot ±1 / relatif) et à ±6 % de BPM (ou demi/double tempo).
 - Glisser des lignes vers Rekordbox, Ableton, le Finder… ; clic droit : Finder, ré-analyse, re-recherche en ligne, Discogs/MusicBrainz.
 - Export de la vue (ou de la sélection) en playlist M3U8, en CSV ou en **rekordbox XML**.
@@ -66,6 +66,13 @@ En arrière-plan, après l'analyse (un passage ffmpeg sur des extraits, ~0,2 s p
 - Mono enregistré en stéréo, écrêtage du mastering (simple info, mesuré sur les fichiers lossless uniquement : c'est un choix artistique, attendu en gabber ou en hardcore, pas un défaut du fichier).
 
 Une coupure à ~20 kHz sur un lossless n'est qu'une suspicion ; au-dessus de 20,5 kHz c'est un filtre de mastering (inaudible, non signalé), un MP3 320 kbps s'arrêtant vers 20 kHz. Recherche : `quality:bad`, `quality:issue`.
+
+## File d'attente
+
+- Ajouter : touche `q` sur la sélection, clic droit › « Ajouter à la file d'attente » (ou « Lire ensuite » pour passer en tête), ou glisser des lignes sur Vues › **File d'attente**.
+- La vue File d'attente se réordonne par glisser-déposer ; `⌫` / Suppr ou clic droit retire.
+- En fin de titre (ou bouton ⏭), le premier titre de la file démarre et sort de la file. File vide : la lecture reprend dans la liste d'où elle était partie.
+- « Ensuite : … » sous les infos du deck montre le prochain titre ; un clic ouvre la file. La file n'est pas gardée à la fermeture de l'app.
 
 ## Doublons
 
