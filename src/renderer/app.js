@@ -1246,6 +1246,9 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
   else if (e.key === 'ArrowDown') { e.preventDefault(); moveSelection(1, e.shiftKey); }
   else if (e.key === 'ArrowUp') { e.preventDefault(); moveSelection(-1, e.shiftKey); }
+  else if (e.key === 'ArrowRight' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); playNext(); }
+  else if (e.key === 'ArrowLeft' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); restart(); }
+  else if (e.key === '?') openSettings('keys');
   else if (e.key === 'ArrowRight' && audio.duration) audio.currentTime = Math.min(audio.duration, audio.currentTime + (e.shiftKey ? 30 : 8));
   else if (e.key === 'ArrowLeft' && audio.duration) audio.currentTime = Math.max(0, audio.currentTime - (e.shiftKey ? 30 : 8));
   else if (e.key === 'Enter' && state.anchor) loadTrack(state.anchor, { play: true });
@@ -1395,7 +1398,61 @@ function updateStats(s) {
 }
 
 // ---------- settings ----------
-async function openSettings() {
+// ---------- keyboard shortcuts (help, in the settings) ----------
+const MOD = api.platform === 'darwin' ? '⌘' : 'Ctrl';
+const ALT = api.platform === 'darwin' ? '⌥' : 'Alt';
+// each combo: keys pressed together; several combos = alternatives
+const SHORTCUTS = [
+  ['Lecture', [
+    ['Lecture / pause', [['Espace']]],
+    ['Lire le titre sélectionné', [['Entrée'], ['Double-clic']]],
+    ['Titre suivant', [[MOD, '→']]],
+    ['Retour au début du titre', [[MOD, '←'], ['Début']]],
+    ['Avancer / reculer de 8 s', [['→'], ['←']]],
+    ['Avancer / reculer de 30 s', [['⇧', '→'], ['⇧', '←']]],
+    ['Ajouter à la file d\'attente', [['Q']]],
+  ]],
+  ['Liste et recherche', [
+    ['Rechercher', [[MOD, 'K'], [MOD, 'F']]],
+    ['Depuis la recherche : aller au premier résultat', [['↓'], ['Entrée']]],
+    ['Quitter la recherche', [['Échap']]],
+    ['Titre suivant / précédent dans la liste', [['↓'], ['↑']]],
+    ['Étendre la sélection', [['⇧', '↓'], ['⇧', '↑']]],
+    ['Tout sélectionner', [[MOD, 'A']]],
+    ['Filtre « Mixables »', [['M']]],
+    ['Filtre « Hors playlist »', [['P']]],
+  ]],
+  ['Titres', [
+    ['Note', [['0'], ['…'], ['5']]],
+    ['Modifier les infos', [['F2']]],
+    ['Retirer de la playlist / de la file', [['⌫']]],
+    ['BPM ×2 / ÷2', [['*'], ['/']]],
+  ]],
+  ['Grille', [
+    ['Clic métronome', [['C']]],
+    ['Le 1er temps recule / avance d\'un temps', [['['], [']']]],
+    ['Décaler la grille de −5 / +5 ms', [[','], ['.']]],
+    ['… de −1 / +1 ms', [[ALT, ','], [ALT, '.']]],
+    ['Le temps le plus proche devient le 1er temps', [['G']]],
+    ['Caler la grille sur la tête de lecture', [['⇧', 'G']]],
+  ]],
+  ['Aide', [['Cette liste', [['?']]]]],
+];
+function renderKeys() {
+  $('keysList').innerHTML = SHORTCUTS.map(([group, rows]) => `<h3>${esc(group)}</h3>` + rows.map(([label, combos]) =>
+    `<div class="key-row"><span>${esc(label)}</span><span class="combo">${combos.map((c) => c.map((k) => `<kbd>${esc(k)}</kbd>`).join('')).join('<span class="or">ou</span>')}</span></div>`).join('')).join('');
+}
+function showTab(name) {
+  document.querySelectorAll('#settingsDlg .tab').forEach((t) => t.classList.toggle('on', t.dataset.tab === name));
+  document.querySelectorAll('#settingsDlg .tab-pane').forEach((p) => { p.hidden = p.dataset.pane !== name; });
+  $('sSave').classList.toggle('hidden', name === 'keys');
+  $('sCancel').textContent = name === 'keys' ? 'Fermer' : 'Annuler';
+}
+document.querySelectorAll('#settingsDlg .tab').forEach((t) => t.addEventListener('click', () => showTab(t.dataset.tab)));
+
+async function openSettings(tab) {
+  renderKeys();
+  showTab(typeof tab === 'string' ? tab : 'general');
   const s = state.settings = await api.getSettings();
   $('sMin').value = s.minBpm; $('sMax').value = s.maxBpm; $('sConc').value = s.concurrency;
   $('sAuto').checked = s.autoOnline; $('sMb').checked = s.useMusicBrainz; $('sDg').checked = s.useDiscogs !== false; $('sDiscogs').value = s.discogsToken || ''; $('sDgKey').value = s.discogsKey || ''; $('sDgSecret').value = s.discogsSecret || ''; $('sUpd').checked = s.autoUpdate !== false;

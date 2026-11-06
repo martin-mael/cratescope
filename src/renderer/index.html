@@ -60,7 +60,7 @@ dup:yes  played:yes|no  pl:no (dans aucune playlist)
       <canvas id="zoomWave" class="zoom-wave"></canvas>
       <canvas id="overWave" class="over-wave"></canvas>
       <div class="transport">
-        <button id="btnRestart" class="btn restart" title="Retour au début (Début / Fn + ←)">⏮</button>
+        <button id="btnRestart" class="btn restart" title="Retour au début">⏮</button>
         <button id="btnPlay" class="btn play" title="Lecture / pause (espace)">▶</button>
         <button id="btnNext" class="btn restart" title="Titre suivant">⏭</button>
         <span id="tPos" class="time">0:00</span>
@@ -134,6 +134,12 @@ dup:yes  played:yes|no  pl:no (dans aucune playlist)
   <dialog id="settingsDlg" class="dialog">
     <form method="dialog">
       <h2>Réglages</h2>
+      <div class="tabs">
+        <button type="button" class="tab on" data-tab="general">Général</button>
+        <button type="button" class="tab" data-tab="keys">Raccourcis clavier</button>
+      </div>
+      <div class="tab-pane" data-pane="keys" hidden><div id="keysList" class="keys"></div></div>
+      <div class="tab-pane" data-pane="general">
       <fieldset>
         <legend>Analyse</legend>
         <label>Plage de BPM
@@ -162,8 +168,9 @@ dup:yes  played:yes|no  pl:no (dans aucune playlist)
         <label class="toggle"><input id="sUpd" type="checkbox" /> Mettre à jour automatiquement</label>
         <div class="row-inline"><button type="button" id="btnCheckUpd" class="btn">Rechercher une mise à jour</button><span id="updInfo" class="hint upd-info"></span></div>
       </fieldset>
+      </div>
       <div class="dlg-actions">
-        <button value="cancel" class="btn">Annuler</button>
+        <button value="cancel" id="sCancel" class="btn">Annuler</button>
         <button value="ok" id="sSave" class="btn primary">Enregistrer</button>
       </div>
     </form>

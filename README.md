@@ -26,6 +26,8 @@ npm start -- ~/Music/Crate     # ouvre directement un dossier
 ## Utilisation
 
 - Clic = sélectionner (le titre en cours continue), double-clic / Entrée = lire. En fin de titre, le premier de la [file d'attente](#file-dattente) démarre, sinon le suivant de la liste.
+- Tous les raccourcis : ⚙︎ › « Raccourcis clavier », ou touche `?`.
+- `⌘→` titre suivant, `⌘←` retour au début (`Ctrl` sous Windows).
 - Espace lecture/pause (lit le titre sélectionné si rien n'est chargé), ⏮ ou touche Début = retour au début du titre (garde lecture / pause), ↑/↓ déplacer la sélection, ←/→ avance de 8 s (Maj : 30 s), molette sur la waveform = zoom, glisser = scratch.
 - **Mixables** (touche `m`) : n'affiche que les titres compatibles harmoniquement avec le titre chargé (Camelot ±1 / relatif) et à ±6 % de BPM (ou demi/double tempo).
 - Glisser des lignes vers Rekordbox, Ableton, le Finder… ; clic droit : Finder, ré-analyse, re-recherche en ligne, Discogs/MusicBrainz.
