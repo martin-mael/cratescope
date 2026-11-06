@@ -38,6 +38,11 @@ jobs:
       - name: Check bundled ffmpeg + analyser
         if: matrix.platform == 'darwin' && matrix.arch == 'arm64'
         run: node scripts/ci-check.js dist/CrateScope-darwin-arm64/CrateScope.app/Contents/Resources/ffmpeg
+      - name: Updater swap script + build number
+        if: matrix.platform == 'darwin' && matrix.arch == 'arm64'
+        run: |
+          node scripts/update-test.js
+          test "$(node -p "require('./dist/CrateScope-darwin-arm64/CrateScope.app/Contents/Resources/build.json').build")" = "$GITHUB_RUN_NUMBER"
       - uses: actions/upload-artifact@v4
         with:
           name: cratescope-${{ matrix.platform }}-${{ matrix.arch }}
@@ -63,6 +68,15 @@ jobs:
         run: Expand-Archive (Get-ChildItem artifact/*.zip).FullName -DestinationPath extracted
       - name: Check bundled ffmpeg + analyser
         run: node scripts/ci-check.js extracted/CrateScope-win32-x64/resources/ffmpeg
+      - name: Updater (tar extraction, swap script, build number)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory updater-unpack | Out-Null
+          tar -xf (Get-ChildItem artifact/*.zip).FullName -C updater-unpack
+          if (-not (Test-Path updater-unpack/CrateScope-win32-x64/CrateScope.exe)) { throw "tar extraction failed" }
+          $build = (Get-Content updater-unpack/CrateScope-win32-x64/resources/build.json | ConvertFrom-Json).build
+          if ("$build" -ne "$env:GITHUB_RUN_NUMBER") { throw "build.json: $build" }
+          node scripts/update-test.js
 
   release:
     name: Publish release

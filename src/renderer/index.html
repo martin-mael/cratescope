@@ -103,6 +103,8 @@
     <div id="status">Prêt</div>
     <div class="progress"><div id="progressBar"></div></div>
     <div id="statusRight"></div>
+    <div class="spacer"></div>
+    <button id="updBtn" class="upd hidden"></button>
   </footer>
 
   <dialog id="settingsDlg" class="dialog">
@@ -130,6 +132,11 @@
         <label>… ou Consumer Key + Consumer Secret d'une application
           <span class="row-inline"><input id="sDgKey" class="input wide" type="text" placeholder="Consumer Key" autocomplete="off" /><input id="sDgSecret" class="input wide" type="password" placeholder="Consumer Secret" autocomplete="off" /></span>
         </label>
+      </fieldset>
+      <fieldset>
+        <legend>Mises à jour</legend>
+        <label class="toggle"><input id="sUpd" type="checkbox" /> Mettre à jour automatiquement (téléchargée en arrière-plan, installée au redémarrage)</label>
+        <div class="row-inline"><button type="button" id="btnCheckUpd" class="btn">Rechercher une mise à jour</button><span id="updInfo" class="hint upd-info"></span></div>
       </fieldset>
       <div class="dlg-actions">
         <button value="cancel" class="btn">Annuler</button>

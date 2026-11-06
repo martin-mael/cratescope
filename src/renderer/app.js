@@ -907,7 +907,7 @@ function updateStats(s) {
 async function openSettings() {
   const s = state.settings = await api.getSettings();
   $('sMin').value = s.minBpm; $('sMax').value = s.maxBpm; $('sConc').value = s.concurrency;
-  $('sAuto').checked = s.autoOnline; $('sMb').checked = s.useMusicBrainz; $('sDg').checked = s.useDiscogs !== false; $('sDiscogs').value = s.discogsToken || ''; $('sDgKey').value = s.discogsKey || ''; $('sDgSecret').value = s.discogsSecret || '';
+  $('sAuto').checked = s.autoOnline; $('sMb').checked = s.useMusicBrainz; $('sDg').checked = s.useDiscogs !== false; $('sDiscogs').value = s.discogsToken || ''; $('sDgKey').value = s.discogsKey || ''; $('sDgSecret').value = s.discogsSecret || ''; $('sUpd').checked = s.autoUpdate !== false;
   $('settingsDlg').showModal();
 }
 $('btnSettings').addEventListener('click', openSettings);
@@ -918,9 +918,46 @@ $('settingsDlg').addEventListener('close', async () => {
   const min = Math.max(40, +$('sMin').value || 88), max = Math.max(min * 1.9, +$('sMax').value || 180);
   state.settings = await api.setSettings({
     minBpm: min, maxBpm: Math.round(max), concurrency: Math.max(1, Math.min(16, +$('sConc').value || 4)),
-    autoOnline: $('sAuto').checked, useMusicBrainz: $('sMb').checked, useDiscogs: $('sDg').checked, discogsToken: $('sDiscogs').value.trim(), discogsKey: $('sDgKey').value.trim(), discogsSecret: $('sDgSecret').value.trim(),
+    autoOnline: $('sAuto').checked, useMusicBrainz: $('sMb').checked, useDiscogs: $('sDg').checked, discogsToken: $('sDiscogs').value.trim(), discogsKey: $('sDgKey').value.trim(), discogsSecret: $('sDgSecret').value.trim(), autoUpdate: $('sUpd').checked,
   });
 });
+
+// ---------- updates ----------
+let upd = null;
+function updText(st) {
+  switch (st.status) {
+    case 'checking': return 'Recherche en cours…';
+    case 'uptodate': return `À jour (${st.current})`;
+    case 'available': return `Version ${st.latest} disponible`;
+    case 'downloading': return `Téléchargement de ${st.latest} : ${Math.round(st.progress * 100)} %`;
+    case 'ready': return `${st.latest} prête, installée au redémarrage`;
+    case 'installing': return 'Installation…';
+    case 'error': return `Erreur : ${st.error}`;
+    default: return `Version installée : ${st.current}`;
+  }
+}
+function renderUpdate(st) {
+  upd = st;
+  $('updInfo').textContent = updText(st);
+  const b = $('updBtn');
+  const show = ['available', 'downloading', 'ready'].includes(st.status) || (st.status === 'error' && st.latest);
+  b.classList.toggle('hidden', !show);
+  b.classList.toggle('ready', st.status === 'ready');
+  b.classList.toggle('error', st.status === 'error');
+  b.textContent = st.status === 'ready' ? `⟳ Redémarrer pour passer à ${st.latest}`
+    : st.status === 'downloading' ? `⬇ ${st.latest} : ${Math.round(st.progress * 100)} %`
+    : st.status === 'error' ? '⚠ Mise à jour impossible' : `⬆ ${st.latest} disponible`;
+  b.title = st.status === 'error' ? `${st.error}\nCliquer pour ouvrir la page de la version` : st.status === 'available' ? 'Cliquer pour télécharger la mise à jour' : '';
+}
+$('updBtn').addEventListener('click', () => {
+  if (!upd) return;
+  if (upd.status === 'ready') api.installUpdate();
+  else if (upd.status === 'available') api.downloadUpdate();
+  else if (upd.status === 'error' && upd.url) api.openExternal(upd.url);
+});
+$('btnCheckUpd').addEventListener('click', () => api.checkUpdate());
+api.onUpdateState(renderUpdate);
+api.updateState().then(renderUpdate);
 
 // ---------- boot ----------
 renderHead();

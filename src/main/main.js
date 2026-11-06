@@ -1,11 +1,12 @@
 'use strict';
-const { app, BrowserWindow, ipcMain, dialog, shell, Menu, clipboard, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Menu, clipboard, nativeImage, net } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { pathToFileURL } = require('url');
 const { Library, hashId, AUDIO_EXT } = require('./library');
 const { Playlists } = require('./playlists');
+const { Updater } = require('./updater');
 const { buildXml, mp3Offsets } = require('./rekordbox');
 const { extractCover, transcodeForPlayback } = require('../analysis/ffmpeg');
 
@@ -33,12 +34,14 @@ const DEFAULTS = {
   discogsToken: '',
   discogsKey: '',
   discogsSecret: '',
+  autoUpdate: true,
   lastRoot: null,
 };
 
 let win;
 let library;
 let playlists;
+let updater;
 let settings;
 const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
 
@@ -88,12 +91,24 @@ app.whenReady().then(() => {
   playlists = new Playlists(path.join(app.getPath('userData'), 'playlists.json'));
   library.pinned = () => playlists.allPaths();
   playlists.on('change', () => send('playlists:update', publicPlaylists()));
+  updater = new Updater({
+    app, fetch: net.fetch.bind(net), dataDir: app.getPath('userData'), getSettings: () => settings,
+    // dev tests only: pretend to be an older install living elsewhere
+    ...(!app.isPackaged && process.env.CRATESCOPE_UPDATE_TARGET ? {
+      target: process.env.CRATESCOPE_UPDATE_TARGET, current: process.env.CRATESCOPE_UPDATE_CURRENT || '0.0.1', build: +process.env.CRATESCOPE_UPDATE_BUILD || 0,
+    } : {}),
+  });
+  updater.on('state', (st) => send('update:state', st));
+  updater.start();
   createWindow();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
 
 app.on('window-all-closed', () => app.quit());
-app.on('before-quit', () => { if (library) library.close(); });
+app.on('before-quit', () => {
+  if (library) library.close();
+  if (updater) { updater.stop(); updater.install({ relaunch: false }); } // a downloaded update is applied on quit
+});
 
 // ---------- IPC ----------
 ipcMain.handle('settings:get', () => settings);
@@ -331,5 +346,11 @@ ipcMain.handle('export', async (_e, { format, ids, name }) => {
   shell.showItemInFolder(r.filePath);
   return true;
 });
+
+// ---------- updates ----------
+ipcMain.handle('update:state', () => updater.state);
+ipcMain.handle('update:check', () => updater.check({ manual: true }));
+ipcMain.handle('update:download', () => updater.download());
+ipcMain.on('update:install', () => { if (updater.install({ relaunch: true })) app.quit(); });
 
 ipcMain.on('open:external', (_e, url) => { if (/^https:\/\//.test(url)) shell.openExternal(url); });

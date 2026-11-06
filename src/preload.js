@@ -37,6 +37,10 @@ contextBridge.exposeInMainWorld('api', {
   deletePlaylist: (id) => ipcRenderer.send('playlists:delete', id),
   playlistMenu: (id) => ipcRenderer.send('playlists:context', id),
   pathForFile: (file) => webUtils.getPathForFile(file),
+  updateState: () => ipcRenderer.invoke('update:state'),
+  checkUpdate: () => ipcRenderer.invoke('update:check'),
+  downloadUpdate: () => ipcRenderer.invoke('update:download'),
+  installUpdate: () => ipcRenderer.send('update:install'),
   openExternal: (url) => ipcRenderer.send('open:external', url),
   onUpdate: on('library:update'),
   onRemoved: on('library:removed'),
@@ -45,4 +49,5 @@ contextBridge.exposeInMainWorld('api', {
   onNewPlaylist: on('playlists:new'),
   onRenamePlaylist: on('playlists:rename'),
   onExportDone: on('export:done'),
+  onUpdateState: on('update:state'),
 });

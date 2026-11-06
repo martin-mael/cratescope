@@ -27,6 +27,9 @@ run('npx', ['electron-packager', '.', 'CrateScope',
 ]);
 
 const out = path.join(dist, `CrateScope-${platform}-${arch}`);
+// CI build number, read by the updater to tell builds of the same version apart (before signing)
+const resources = platform === 'darwin' ? path.join(out, 'CrateScope.app', 'Contents', 'Resources') : path.join(out, 'resources');
+fs.writeFileSync(path.join(resources, 'build.json'), JSON.stringify({ build: +process.env.GITHUB_RUN_NUMBER || 0 }));
 const label = platform === 'darwin' ? 'macos' : 'windows';
 // version in the file name, plus the CI build number when built by the release workflow
 const version = require('../package.json').version + (process.env.GITHUB_RUN_NUMBER ? `-build.${process.env.GITHUB_RUN_NUMBER}` : '');
