@@ -152,7 +152,7 @@ $('thead').addEventListener('contextmenu', (e) => {
 const QUALITY_LEGEND = '<b>Qualité du fichier</b><div class="tip-sep"></div>'
   + '<b class="q-bad">✖ Problème</b> : faux lossless, MP3 ré-encodé, bitrate faible<br>'
   + '<b class="q-warn">▲ À vérifier</b> : lossless douteux, bitrate moyen, faux stéréo<br>'
-  + '<b class="q-info">• Info</b> : silence au début ou à la fin, mastering saturé ou filtré<br>'
+  + '<b class="q-info">• Info</b> : silence au début ou à la fin, mastering saturé<br>'
   + '<b class="q-ok">✓ OK</b> : rien à signaler';
 
 // ---------- tooltips ----------

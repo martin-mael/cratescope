@@ -43,14 +43,13 @@
     if (q.cutoff) {
       const c = q.cutoff;
       if (q.lossless) {
-        if (c <= 17500) add('bad', 'Faux lossless', `Faux lossless : spectre coupé à ${kHz(c)}`, 'Fabriqué à partir d\'un MP3 128 kbps : il n\'en a que la qualité.');
-        else if (c <= 19600) add('bad', 'Faux lossless', `Faux lossless : spectre coupé à ${kHz(c)}`, 'Fabriqué à partir d\'un MP3 192 kbps : il n\'en a que la qualité.');
-        // LAME 320 kbps stops at ~20.0-20.4 kHz; mastering filters / resamplers often sit at 20.5-21 kHz
-        else if (c <= 20500) add('warn', 'Lossless douteux', `Spectre coupé à ${kHz(c)}`, 'Peut-être fabriqué à partir d\'un MP3 320 kbps (différence quasi inaudible).');
-        else if (c <= 21000) add('info', 'Filtré', `Filtré à ${kHz(c)}`, 'Filtre de mastering, inaudible. Pas un faux.');
+        if (c <= 17500) add('bad', 'Faux lossless', `Faux lossless : spectre coupé à ${kHz(c)}`, 'Source : MP3 128 kbps.');
+        else if (c <= 19600) add('bad', 'Faux lossless', `Faux lossless : spectre coupé à ${kHz(c)}`, 'Source : MP3 192 kbps.');
+        // LAME 320 kbps stops at ~20.0-20.4 kHz; higher cutoffs are mastering filters (inaudible, not reported)
+        else if (c <= 20500) add('warn', 'Lossless douteux', `Spectre coupé à ${kHz(c)}`, 'Source possible : MP3 320 kbps (différence quasi inaudible).');
       } else if (p.bitrate >= 256) {
-        if (c <= 17500) add('bad', 'Ré-encodé', `Ré-encodé : spectre coupé à ${kHz(c)} malgré ${p.bitrate} kbps`, 'Un MP3 128 kbps ré-encodé : il n\'en a que la qualité.');
-        else if (c <= 19600) add('warn', 'Ré-encodé ?', `Spectre coupé à ${kHz(c)} malgré ${p.bitrate} kbps`, 'Probablement ré-encodé depuis un MP3 192 kbps.');
+        if (c <= 17500) add('bad', 'Ré-encodé', `Ré-encodé : spectre coupé à ${kHz(c)} malgré ${p.bitrate} kbps`, 'Source : MP3 128 kbps.');
+        else if (c <= 19600) add('warn', 'Ré-encodé ?', `Spectre coupé à ${kHz(c)} malgré ${p.bitrate} kbps`, 'Source probable : MP3 192 kbps.');
       }
     }
     // clipping only means something on lossless files (decoding a loud MP3 always overshoots 0 dB),

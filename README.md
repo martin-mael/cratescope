@@ -65,7 +65,7 @@ En arrière-plan, après l'analyse (un passage ffmpeg sur des extraits, ~0,2 s p
 - Bitrate faible (< 160 kbps) ou moyen (< 210 kbps), échantillonnage < 44,1 kHz.
 - Mono enregistré en stéréo, silence au début ou à la fin, écrêtage du mastering (simple info, mesuré sur les fichiers lossless uniquement : c'est un choix artistique, attendu en gabber ou en hardcore, pas un défaut du fichier).
 
-Une coupure à ~20 kHz sur un lossless n'est qu'une suspicion ; au-dessus de 20,5 kHz c'est presque toujours un filtre de mastering (simple info), un MP3 320 kbps s'arrêtant vers 20 kHz. Recherche : `quality:bad`, `quality:issue`.
+Une coupure à ~20 kHz sur un lossless n'est qu'une suspicion ; au-dessus de 20,5 kHz c'est un filtre de mastering (inaudible, non signalé), un MP3 320 kbps s'arrêtant vers 20 kHz. Recherche : `quality:bad`, `quality:issue`.
 
 ## Doublons
 
