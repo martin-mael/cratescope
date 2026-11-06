@@ -1227,10 +1227,22 @@ audio.addEventListener('seeked', () => { metro.next = null; });
 // ---------- keyboard ----------
 window.addEventListener('keydown', (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k' && !document.querySelector('dialog[open]')) { e.preventDefault(); $('search').focus(); $('search').select(); return; }
+  // search field: ↓ / Enter go down into the results, keyboard only
+  if (e.target.id === 'search' && (e.key === 'ArrowDown' || e.key === 'Enter')) {
+    e.preventDefault();
+    e.target.blur();
+    if (state.dirtyView) { computeView(); state.dirtyView = false; } // typed just before: results up to date
+    if (!state.view.length) return;
+    state.anchor = null;
+    moveSelection(1); // first result
+    return;
+  }
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || document.querySelector('dialog[open]')) {
     if (e.key === 'Escape') e.target.blur();
     return;
   }
+  // ↑ on the first track goes back up to the search field
+  if (e.key === 'ArrowUp' && !e.shiftKey && state.view.length && state.anchor === state.view[0]) { e.preventDefault(); $('search').focus(); $('search').select(); return; }
   if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
   else if (e.key === 'ArrowDown') { e.preventDefault(); moveSelection(1, e.shiftKey); }
   else if (e.key === 'ArrowUp') { e.preventDefault(); moveSelection(-1, e.shiftKey); }

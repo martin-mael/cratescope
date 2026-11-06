@@ -42,7 +42,7 @@ Rien n'est écrit dans les fichiers audio : tout reste dans CrateScope et part d
 
 ## Recherche
 
-`⌘K` (`Ctrl+K` sous Windows) ou `⌘F` place le curseur dans la recherche. Les filtres (BPM, tonalité, sous-dossiers, hors playlist, mixables) sont dans la barre au-dessus de la liste, avec le nombre de titres affichés.
+`⌘K` (`Ctrl+K` sous Windows) ou `⌘F` place le curseur dans la recherche ; ↓ ou Entrée descend sur le premier résultat, ↑ sur le premier titre remonte dans la recherche. Les filtres (BPM, tonalité, sous-dossiers, hors playlist, mixables) sont dans la barre au-dessus de la liste, avec le nombre de titres affichés.
 
 Sans syntaxe, tous les mots doivent apparaître (titre, artiste, genres, styles, label, album, commentaire, nom de fichier, tonalité, BPM). Accents et majuscules ignorés. Avec syntaxe (infobulle du champ de recherche) :
 
