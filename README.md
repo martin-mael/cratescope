@@ -68,7 +68,7 @@ L'app vérifie au lancement (puis toutes les 6 h) la dernière release GitHub. S
 - Réglages › Mises à jour : désactiver le mode automatique, ou « Rechercher une mise à jour ».
 - L'app est remplacée à son emplacement actuel (`/Applications/CrateScope.app`, ou le dossier dézippé sous Windows). Si ce dossier n'est pas modifiable, un message l'indique et il faut installer la version à la main depuis la page de la release.
 - Tes réglages, ta bibliothèque analysée et tes playlists ne sont pas touchés : ils sont rangés à part (`~/Library/Application Support/CrateScope`, `%APPDATA%\CrateScope`).
-- Deux builds d'une même version se distinguent par le numéro de build de la CI ; une version compilée en local n'est remplacée que par une version supérieure.
+- Une mise à jour est proposée dès que la release a un numéro de version supérieur à celui de l'app installée.
 
 ## Mesurer la précision
 
@@ -85,6 +85,6 @@ npm run install_app    # build Apple Silicon + copie dans /Applications
 
 ffmpeg/ffprobe sont embarqués dans les builds (`scripts/fetch-ffmpeg.sh` → `vendor/`, copiés dans `resources/ffmpeg`). En dev, l'app utilise ffmpeg du PATH / Homebrew.
 
-Chaque push sur `main` déclenche `.github/workflows/release.yml` : builds macOS (arm64 + x64) et Windows, vérification de ffmpeg et de l'analyse sur les binaires embarqués (`scripts/ci-check.js`, y compris sur un runner Windows), puis publication d'une release GitHub `v<version>-build.<n>` avec les trois zips, nommés `CrateScope-<version>-build.<n>-<système>-<arch>.zip`.
+Chaque push sur `main` déclenche `.github/workflows/release.yml` : builds macOS (arm64 + x64) et Windows, vérification de ffmpeg et de l'analyse sur les binaires embarqués (`scripts/ci-check.js`, y compris sur un runner Windows), puis publication d'une release GitHub `v<version>` avec les trois zips, nommés `CrateScope-<version>-<système>-<arch>.zip`. Une seule release par version : un push sans changement de version dans `package.json` construit et teste, sans publier.
 
 Les icônes sont générées depuis `build/icon.svg` (→ `icon.png` → `icon.icns`, et `node scripts/make-ico.js` pour `icon.ico`).
