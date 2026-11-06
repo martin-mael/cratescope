@@ -84,7 +84,7 @@ const COLS = [
   { key: 'time', label: 'Durée', width: '58px', sort: fDur, cell: (t) => (fDur(t) ? fmtTime(fDur(t)) : '') },
   { key: 'year', label: 'Année', width: '52px', sort: (t) => fYear(t) || '9999', cell: (t) => esc(fYear(t)) },
   { key: 'label', label: 'Label', width: 'minmax(60px, 0.9fr)', sort: (t) => (fLabel(t) || '~').toLowerCase(), cell: (t) => esc(fLabel(t)) },
-  { key: 'quality', label: 'Qualité', width: '64px', sort: (t) => qualitySort(t), cell: (t) => qualityCell(t) },
+  { key: 'quality', label: 'Qualité', width: '118px', sort: (t) => qualitySort(t), cell: (t) => qualityCell(t) },
   { key: 'fmt', label: 'Format', width: '92px', sort: (t) => t.ext, cell: (t) => esc(fFormat(t)) },
   { key: 'played', label: 'Écoutes', width: '62px', hidden: true, sort: (t) => -(playCount(t) || 0), cell: (t) => playCount(t) || '' },
   { key: 'path', label: 'Chemin', width: 'minmax(100px, 1.5fr)', hidden: true, sort: (t) => t.path.toLowerCase(), cell: (t) => `<span title="${esc(t.path)}">${esc(t.external ? t.path : t.rel)}</span>` },
@@ -126,7 +126,8 @@ function renderHead() {
     if (state.sort2 && state.sort2.key === c.key) return ` <i title="Tri secondaire">²${state.sort2.dir > 0 ? '▲' : '▼'}</i>`;
     return '';
   };
-  $('thead').innerHTML = visibleCols.map((c) => `<div data-k="${c.key}" class="${state.sort.key === c.key ? 'sorted' : state.sort2 && state.sort2.key === c.key ? 'sorted2' : ''}" title="Clic : trier · ⇧ clic : tri secondaire · clic droit : colonnes">${c.label}${mark(c)}</div>`).join('');
+  const headTip = (c) => (c.key === 'quality' ? QUALITY_LEGEND : '<b>' + esc(c.label || 'État') + '</b><br>Clic : trier · ⇧ clic : tri secondaire<br>Clic droit : afficher / masquer des colonnes');
+  $('thead').innerHTML = visibleCols.map((c) => `<div data-k="${c.key}" class="${state.sort.key === c.key ? 'sorted' : state.sort2 && state.sort2.key === c.key ? 'sorted2' : ''}" data-tip="${esc(headTip(c))}">${c.label}${mark(c)}</div>`).join('');
 }
 // click: primary sort · shift-click: secondary sort (Genre then BPM…)
 $('thead').addEventListener('click', (e) => {
@@ -148,15 +149,57 @@ $('thead').addEventListener('contextmenu', (e) => {
   api.columnsMenu(COLS.filter((c) => c.label && c.key !== 'title').map((c) => ({ key: c.key, label: c.label, checked: shown.has(c.key) })));
 });
 
+const QUALITY_LEGEND = '<b>Qualité du fichier</b> (vérifiée en arrière-plan après l\'analyse)<div class="tip-sep"></div>'
+  + '<b class="q-bad">✖ Problème</b> : faux lossless (fabriqué depuis un MP3), MP3 ré-encodé, bitrate faible<br>'
+  + '<b class="q-warn">▲ À vérifier</b> : lossless douteux, bitrate moyen, faux stéréo, mastering très saturé<br>'
+  + '<b class="q-info">• Info</b> : silence au début / à la fin, léger écrêtage<br>'
+  + '<b class="q-ok">✓ OK</b> : rien à signaler<div class="tip-sep"></div>Survoler une case pour le détail. Recherche : quality:bad, quality:issue';
+
+// ---------- tooltips ----------
+// instant, styled tooltips for [data-tip] (HTML built by us, escaped where it holds file data)
+const tipBox = document.createElement('div');
+tipBox.className = 'tip hidden';
+document.body.appendChild(tipBox);
+let tipFor = null, tipTimer = null;
+function hideTip() { clearTimeout(tipTimer); tipFor = null; tipBox.classList.add('hidden'); }
+document.addEventListener('mouseover', (e) => {
+  const el = e.target.closest && e.target.closest('[data-tip]');
+  if (el === tipFor) return;
+  hideTip();
+  if (!el) return;
+  tipFor = el;
+  tipTimer = setTimeout(() => {
+    if (!el.isConnected) return;
+    tipBox.innerHTML = el.dataset.tip;
+    tipBox.classList.remove('hidden');
+    const r = el.getBoundingClientRect(), b = tipBox.getBoundingClientRect();
+    let x = Math.min(window.innerWidth - b.width - 8, Math.max(8, r.left));
+    let y = r.bottom + 6;
+    if (y + b.height > window.innerHeight - 8) y = Math.max(8, r.top - b.height - 6);
+    tipBox.style.left = x + 'px';
+    tipBox.style.top = y + 'px';
+  }, 180);
+});
+['mousedown', 'wheel', 'keydown'].forEach((ev) => window.addEventListener(ev, hideTip, true));
+$('tbody').addEventListener('scroll', hideTip, { passive: true });
+
 // filled in by the quality / duplicates / history sections below
 const Q_ICON = { bad: '✖', warn: '▲', info: '•', ok: '✓' };
 const Q_ORDER = { bad: 0, warn: 1, info: 2, ok: 3 };
+const Q_LABEL = { bad: 'Problème', warn: 'À vérifier', info: 'Info', ok: 'OK' };
+// issues, worst first
+const issuesOf = (t) => meta.qualityIssues(t).sort((a, b) => Q_ORDER[a.level] - Q_ORDER[b.level]);
+function qualityTip(t) {
+  const issues = issuesOf(t);
+  if (!issues.length) return '<b class="q-ok">✓ Aucun problème détecté</b><br>Spectre complet, pas de saturation ni de faux stéréo, bitrate correct.';
+  return issues.map((i) => `<b class="q-${i.level}">${Q_ICON[i.level]} ${esc(i.text)}</b><br>${esc(i.why)}`).join('<div class="tip-sep"></div>');
+}
 function qualityCell(t) {
   const lvl = meta.qualityLevel(t);
   if (!lvl) return '';
-  const issues = meta.qualityIssues(t).map((i) => i.text);
-  const tip = issues.length ? issues.join('\n') : 'Aucun problème détecté';
-  return `<span class="q q-${lvl}" title="${esc(tip)}">${Q_ICON[lvl]}${issues.length > 1 ? `<sup>${issues.length}</sup>` : ''}</span>`;
+  const issues = issuesOf(t);
+  const label = issues.length ? issues[0].short + (issues.length > 1 ? ` +${issues.length - 1}` : '') : 'OK';
+  return `<span class="q q-${lvl}" data-tip="${esc(qualityTip(t))}">${Q_ICON[lvl]} ${esc(label)}</span>`;
 }
 function qualitySort(t) { const l = meta.qualityLevel(t); return l ? Q_ORDER[l] : 9; }
 // duplicates over everything loaded (open folder + playlist tracks), recomputed when tracks change
@@ -165,11 +208,26 @@ function dups() {
   if (dupStamp !== state.trackStamp) { dupMap = meta.duplicates([...state.tracks.values()]); dupStamp = state.trackStamp; }
   return dupMap;
 }
+function dupTip(t, d) {
+  const lines = d.ids.map((id, i) => {
+    const c = state.tracks.get(id);
+    if (!c) return '';
+    const q = meta.qualityLevel(c) === 'bad' ? ` · <span class="q-bad">✖ ${esc(issuesOf(c)[0].short)}</span>` : '';
+    const mark = i === 0 && d.best ? '<span class="q-ok">✓</span>' : '•';
+    return `<div class="${id === t.id ? 'tip-me' : ''}">${mark} ${esc(fFormat(c))} · ${(c.size / 1048576).toFixed(1)} Mo${q}${id === t.id ? ' <i>(celle-ci)</i>' : ''}<br><span class="tip-path">${esc(c.external ? c.path : c.rel)}</span></div>`;
+  }).join('');
+  const verdict = d.best ? 'Celle-ci est la meilleure version : à garder (vrai lossless, puis bitrate, puis taille).'
+    : d.tie ? 'Copies équivalentes (même format, même débit, même taille) : une seule suffit.'
+      : 'Une meilleure copie existe (✓) : celle-ci peut être retirée de ta bibliothèque.';
+  return `<b>${d.size} copies de ce titre</b><br>Même artiste, même titre et même durée à 2 s près.<div class="tip-sep"></div>${lines}<div class="tip-sep"></div>${verdict}`;
+}
 function dupBadge(t) {
   const d = dups().get(t.id);
-  return d ? `<span class="dup${d.best ? ' best' : ''}" title="${d.size} copies de ce titre${d.best ? ' · meilleure version (lossless, bitrate, taille)' : ''}">⧉${d.size}${d.best ? ' ✓' : ''}</span>` : '';
+  if (!d) return '';
+  const label = d.best ? ' · meilleure' : d.tie ? ' · identiques' : '';
+  return `<span class="dup${d.best ? ' best' : ''}" data-tip="${esc(dupTip(t, d))}">⧉ ${d.size} copies${label}</span>`;
 }
-function dupSig(t) { const d = dups().get(t.id); return d ? d.size + (d.best ? 'b' : '') : ''; }
+function dupSig(t) { const d = dups().get(t.id); return d ? d.ids.join(',') + (d.best ? 'b' : '') : ''; }
 // history (sessions from main) — see the history section below
 function playCount(t) { return state.history.counts[t.id] || 0; }
 function isPlayed(t) { return state.played.has(t.id); }
@@ -248,7 +306,7 @@ function computeView() {
   }
   if (src.grouped && state.sort.key === 'dup') { // copies together, best one first
     const d = dups();
-    const rankIn = (t) => (d.get(t.id).best ? 0 : 1);
+    const rankIn = (t) => d.get(t.id).ids.indexOf(t.id);
     out.sort((a, b) => d.get(a.id).group.localeCompare(d.get(b.id).group) || rankIn(a) - rankIn(b));
     state.view = out.map((t) => t.id);
     return;
@@ -541,7 +599,7 @@ function renderPlaylists() {
 // ---------- views: duplicates, history ----------
 function renderViews() {
   const groups = new Set([...dups().values()].map((d) => d.group)).size;
-  const rows = [`<div class="pl view ${state.special === 'dups' ? 'active' : ''}" data-view="dups" title="Titres présents en plusieurs exemplaires (même artiste, titre et durée) : la meilleure version est marquée ✓">
+  const rows = [`<div class="pl view ${state.special === 'dups' ? 'active' : ''}" data-view="dups" data-tip="${esc('<b>Doublons</b><br>Titres présents en plusieurs exemplaires : même artiste, même titre (« original mix », « feat. », accents ignorés) et même durée à 2 s près. Les remixes et edits n\'en font pas partie.<div class=&quot;tip-sep&quot;></div>« meilleure » : la copie à garder (vrai lossless, puis bitrate, puis taille ; un faux lossless passe derrière un bon MP3). « identiques » : copies équivalentes. Rien n\'est supprimé depuis l\'app.')}">
     <span>⧉</span><span class="nm">Doublons</span><span class="ct">${groups || ''}</span></div>`];
   rows.push(...historyRows());
   $('views').innerHTML = rows.join('');
@@ -845,7 +903,7 @@ function renderDeckInfo(t) {
   }
   const links = [o.discogsUrl && `<a data-href="${esc(o.discogsUrl)}">Discogs ↗</a>`, o.mbUrl && `<a data-href="${esc(o.mbUrl)}">MusicBrainz ↗</a>`].filter(Boolean);
   if (links.length) lines.push(links.join(' &nbsp; '));
-  for (const i of meta.qualityIssues(t)) lines.push(`<span class="q-${i.level}">${Q_ICON[i.level]} ${esc(i.text)}</span>`);
+  for (const i of issuesOf(t)) lines.push(`<span class="q-${i.level}" data-tip="${esc(`<b class="q-${i.level}">${Q_ICON[i.level]} ${esc(i.text)}</b><br>${esc(i.why)}`)}">${Q_ICON[i.level]} ${esc(i.text)}</span>`);
   if (t.error) lines.push(`<span style="color:#ff4d5e">Erreur : ${esc(t.error)}</span>`);
   $('dMeta').innerHTML = lines.join('<br>');
 }
