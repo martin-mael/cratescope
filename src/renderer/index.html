@@ -10,25 +10,17 @@
 <body>
   <header class="topbar">
     <div class="brand">Crate<b>Scope</b></div>
-    <button id="btnOpen" class="btn primary">Ouvrir un dossier…</button>
-    <div id="rootName" class="root-name"></div>
-    <div class="spacer"></div>
-    <input id="search" class="input search" type="search" placeholder="Rechercher… (bpm:120-130 key:~8A genre:house rating:>=4)" title="Recherche : tous les mots doivent apparaître.
+    <div class="search-wrap">
+      <span class="search-ico">⌕</span>
+      <input id="search" class="input search" type="search" placeholder="Rechercher un titre, un artiste, un genre…" title="Recherche : tous les mots doivent apparaître.
 bpm:125-130  bpm:>140  key:8A  key:~8A (compatibles)
 genre:  style:  label:  artist:  title:  album:  comment:
 year:1995-1999  rating:>=4  lufs:>-8  kbps:<320  time:>6 (min)
 fmt:flac  fmt:lossless  quality:bad|warn|issue
 dup:yes  played:yes|no  pl:no (dans aucune playlist)
 -mot ou -genre:trance pour exclure, &quot;deux mots&quot; pour une expression" />
-    <div class="bpm-filter">
-      <input id="bpmMin" class="input num" type="number" placeholder="BPM min" />
-      <span>–</span>
-      <input id="bpmMax" class="input num" type="number" placeholder="max" />
+      <kbd id="searchKbd" class="kbd">⌘K</kbd>
     </div>
-    <select id="keyFilter" class="input"><option value="">Toutes tonalités</option></select>
-    <label class="toggle" title="Inclure les sous-dossiers"><input id="recursive" type="checkbox" checked /> Sous-dossiers</label>
-    <label class="toggle" title="Ne montrer que les titres qui ne sont dans aucune playlist (touche p)"><input id="noPlaylist" type="checkbox" /> Hors playlist</label>
-    <label class="toggle" title="Ne montrer que les titres mixables avec le titre chargé (tonalité compatible et BPM ±6 %)"><input id="compatible" type="checkbox" /> Mixables</label>
     <div class="menu-wrap">
       <button id="btnExport" class="btn">Exporter ▾</button>
       <div id="exportMenu" class="menu hidden">
@@ -94,7 +86,7 @@ dup:yes  played:yes|no  pl:no (dans aucune playlist)
 
   <main class="main">
     <aside class="sidebar">
-      <div class="side-head">Dossiers</div>
+      <div class="side-head folder-head">Dossiers <button id="btnOpen" class="side-link" title="Ouvrir un autre dossier de musique">Ouvrir…</button></div>
       <div id="tree" class="tree"></div>
       <div class="side-head pl-head">Vues</div>
       <div id="views" class="views"></div>
@@ -102,6 +94,21 @@ dup:yes  played:yes|no  pl:no (dans aucune playlist)
       <div id="plList" class="pl-list"></div>
     </aside>
     <section class="list">
+      <div class="filterbar">
+        <div class="bpm-filter">
+          <span class="f-label">BPM</span>
+          <input id="bpmMin" class="input num" type="number" placeholder="min" />
+          <span>–</span>
+          <input id="bpmMax" class="input num" type="number" placeholder="max" />
+        </div>
+        <select id="keyFilter" class="input"><option value="">Toutes tonalités</option></select>
+        <div class="f-sep"></div>
+        <label class="chip" title="Inclure les sous-dossiers"><input id="recursive" type="checkbox" checked /> Sous-dossiers</label>
+        <label class="chip" title="Ne montrer que les titres qui ne sont dans aucune playlist (touche p)"><input id="noPlaylist" type="checkbox" /> Hors playlist</label>
+        <label class="chip" title="Ne montrer que les titres mixables avec le titre chargé : tonalité compatible et BPM proche (touche m)"><input id="compatible" type="checkbox" /> Mixables</label>
+        <div class="spacer"></div>
+        <span id="viewCount" class="view-count"></span>
+      </div>
       <div id="thead" class="row head"></div>
       <div id="tbody" class="tbody"><div id="spacer" class="tspacer"></div><div id="dropLine" class="drop-line hidden"></div></div>
       <div id="emptyState" class="empty-state">
@@ -112,6 +119,8 @@ dup:yes  played:yes|no  pl:no (dans aucune playlist)
       </div>
     </section>
   </main>
+
+  <div id="toasts" class="toasts"></div>
 
   <footer class="statusbar">
     <div id="status">Prêt</div>

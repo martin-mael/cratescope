@@ -327,7 +327,7 @@ function schedule() {
   requestAnimationFrame(() => {
     scheduled = false;
     if (state.dirtyTree) { renderTree(); renderPlaylists(); state.dirtyTree = false; }
-    if (state.dirtyView) { computeView(); state.dirtyView = false; }
+    if (state.dirtyView) { computeView(); state.dirtyView = false; $('viewCount').textContent = state.view.length ? `${state.view.length} titre${state.view.length > 1 ? 's' : ''}` : ''; }
     renderRows(true);
   });
 }
@@ -400,10 +400,6 @@ function rowFromEvent(e) { const r = e.target.closest('.trow'); return r ? r.dat
 // whole; the click only narrows it down on release (Finder behaviour).
 let pendingClick = null;
 let ctrlClick = false; // macOS turns Ctrl+click into a context menu too: here it only toggles the selection
-function rowClick(id, e, frac) {
-  select(id, e);
-  if (frac != null) loadTrack(id, { play: true, at: frac }); // mini waveform: load and play from that point
-}
 tbody.addEventListener('mousedown', (e) => {
   const id = rowFromEvent(e);
   if (id && e.button === 0 && e.target.dataset.star) { // star in the rating column
@@ -415,21 +411,16 @@ tbody.addEventListener('mousedown', (e) => {
   }
   ctrlClick = e.button === 0 && e.ctrlKey; // reset by any other press (right click, Windows Ctrl+click)
   if (!id || e.button !== 0) return;
-  let frac = null;
-  if (e.target.tagName === 'CANVAS') {
-    const rect = e.target.getBoundingClientRect();
-    frac = (e.clientX - rect.left) / rect.width;
-  }
   const plain = !e.shiftKey && !e.metaKey && !e.ctrlKey;
-  if (plain && state.selected.size > 1 && state.selected.has(id)) { pendingClick = { id, frac }; return; }
+  if (plain && state.selected.size > 1 && state.selected.has(id)) { pendingClick = id; return; }
   pendingClick = null;
-  rowClick(id, e, frac);
+  select(id, e);
 });
 window.addEventListener('mouseup', () => {
   if (!pendingClick) return;
-  const { id, frac } = pendingClick;
+  const id = pendingClick;
   pendingClick = null;
-  rowClick(id, {}, frac);
+  select(id, {});
 });
 tbody.addEventListener('dblclick', (e) => { const id = rowFromEvent(e); if (id) loadTrack(id, { play: true }); });
 tbody.addEventListener('contextmenu', (e) => {
@@ -548,7 +539,7 @@ function renderTree() {
     const kids = [...n.kids.values()].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
     const open = openNodes.has(n.path);
     return `<div class="node ${open ? '' : 'closed'}" data-path="${esc(n.path)}">
-      <div class="lbl ${!state.playlist && !state.special && state.folder === n.path ? 'active' : ''}"><span class="tw">${kids.length ? (open ? '▼' : '▶') : ''}</span><span class="nm">${depth === 0 ? '🎧 ' : '📁 '}${esc(n.name || 'Dossier')}</span><span class="ct">${n.count}</span></div>
+      <div class="lbl ${!state.playlist && !state.special && state.folder === n.path ? 'active' : ''}"${depth === 0 ? ` title="${esc(state.root || '')}"` : ''}><span class="tw">${kids.length ? (open ? '▼' : '▶') : ''}</span><span class="nm">${depth === 0 ? '🎧 ' : '📁 '}${esc(n.name || 'Dossier')}</span><span class="ct">${n.count}</span></div>
       ${kids.length ? `<div class="kids">${kids.map((k) => html(k, depth + 1)).join('')}</div>` : ''}
     </div>`;
   };
@@ -856,12 +847,48 @@ function removeSelectedFromPlaylist() {
   state.selected.clear();
 }
 
-let flashTimer;
 let statusHold = 0; // until then, library stats don't overwrite the message on the right of the status bar
-function flash(msg) {
-  statusHold = Date.now() + 4000; $('statusRight').textContent = msg;
-  clearTimeout(flashTimer);
-  flashTimer = setTimeout(() => { if ($('statusRight').textContent === msg) $('statusRight').textContent = ''; }, 4000);
+const flash = (msg) => toast(msg, { id: 'flash' }); // short notices replace each other instead of piling up
+
+$('searchKbd').textContent = api.platform === 'darwin' ? '⌘K' : 'Ctrl K';
+
+// ---------- toasts ----------
+// toast(title, { text, kind: 'ok'|'error'|'info', actions: [{ label, run, primary }], duration (ms, 0 = stays), id, tip })
+// a toast with the same id replaces the previous one
+const toasts = new Map();
+let toastSeq = 0;
+function toast(title, { text = '', kind = 'info', actions = [], duration = 4000, id = null, tip = '' } = {}) {
+  id = id || 't' + ++toastSeq;
+  dismissToast(id, true);
+  const el = document.createElement('div');
+  el.className = `toast ${kind}`;
+  el.innerHTML = `<div class="toast-body"><div class="toast-title">${esc(title)}</div>${text ? `<div class="toast-text">${esc(text)}</div>` : ''}</div>
+    ${actions.length ? `<div class="toast-actions">${actions.map((a, i) => `<button class="btn ${a.primary ? 'primary' : ''}" data-i="${i}">${esc(a.label)}</button>`).join('')}</div>` : ''}
+    <button class="toast-x" title="Fermer">✕</button>`;
+  if (tip) el.dataset.tip = tip;
+  el.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-i]');
+    if (b) { actions[+b.dataset.i].run(); dismissToast(id); }
+    else if (e.target.closest('.toast-x')) dismissToast(id);
+  });
+  const entry = { el, timer: null };
+  const arm = () => { if (duration) entry.timer = setTimeout(() => dismissToast(id), duration); };
+  el.addEventListener('mouseenter', () => clearTimeout(entry.timer)); // stays while hovered
+  el.addEventListener('mouseleave', arm);
+  toasts.set(id, entry);
+  $('toasts').appendChild(el);
+  requestAnimationFrame(() => el.classList.add('in'));
+  arm();
+  return id;
+}
+function dismissToast(id, now = false) {
+  const t = toasts.get(id);
+  if (!t) return;
+  toasts.delete(id);
+  clearTimeout(t.timer);
+  if (now) { t.el.remove(); return; }
+  t.el.classList.remove('in');
+  setTimeout(() => t.el.remove(), 200);
 }
 
 api.onPlaylists((list) => {
@@ -1199,6 +1226,7 @@ audio.addEventListener('seeked', () => { metro.next = null; });
 
 // ---------- keyboard ----------
 window.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k' && !document.querySelector('dialog[open]')) { e.preventDefault(); $('search').focus(); $('search').select(); return; }
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || document.querySelector('dialog[open]')) {
     if (e.key === 'Escape') e.target.blur();
     return;
@@ -1210,7 +1238,7 @@ window.addEventListener('keydown', (e) => {
   else if (e.key === 'ArrowLeft' && audio.duration) audio.currentTime = Math.max(0, audio.currentTime - (e.shiftKey ? 30 : 8));
   else if (e.key === 'Enter' && state.anchor) loadTrack(state.anchor, { play: true });
   else if (e.key === 'Home') { e.preventDefault(); restart(); }
-  else if ((e.metaKey || e.ctrlKey) && e.key === 'f') { e.preventDefault(); $('search').focus(); }
+  else if ((e.metaKey || e.ctrlKey) && e.key === 'f') { e.preventDefault(); $('search').focus(); $('search').select(); }
   else if ((e.metaKey || e.ctrlKey) && e.key === 'a') { e.preventDefault(); state.selected = new Set(state.view); renderRows(true); }
   else if (e.key === 'm') $('compatible').click();
   else if (/^[0-5]$/.test(e.key) && !e.metaKey && !e.ctrlKey && !e.altKey) setRating(targetIds(), +e.key);
@@ -1248,10 +1276,11 @@ $('btnExport').addEventListener('click', (e) => { e.stopPropagation(); $('export
 window.addEventListener('click', () => $('exportMenu').classList.add('hidden'));
 function reportExport(res) {
   if (!res || !res.count && !res.skipped) return;
-  let msg = `rekordbox XML : ${res.count} titre(s) exporté(s)`;
-  if (res.skipped.length) msg += ` · ${res.skipped.length} ignoré(s) (format non lu par rekordbox ou pas encore analysé)`;
-  statusHold = Date.now() + 10000; $('statusRight').textContent = msg;
-  $('statusRight').title = res.skipped.join('\n');
+  toast(`Export terminé : ${res.count} titre${res.count > 1 ? 's' : ''}`, {
+    kind: 'ok', duration: res.skipped.length ? 8000 : 4000,
+    text: res.skipped.length ? `${res.skipped.length} ignoré(s) : format non lu par rekordbox ou pas encore analysé` : '',
+    tip: res.skipped.length ? res.skipped.slice(0, 25).map(esc).join('<br>') : '',
+  });
 }
 api.onExportDone(reportExport);
 $('exportMenu').addEventListener('click', (e) => {
@@ -1283,12 +1312,14 @@ api.onCopyProgress((p) => {
 });
 api.onCopyDone((r) => {
   $('copyCancel').classList.add('hidden');
-  if (r.error) { statusHold = Date.now() + 10000; $('statusRight').textContent = `Copie impossible : ${r.error}`; return; }
-  if (r.cancelled) { statusHold = Date.now() + 10000; $('statusRight').textContent = `Copie annulée (${r.copied} / ${r.total} titres copiés)`; return; }
-  let msg = `Clé prête : ${r.copied} copié(s)${r.kept ? `, ${r.kept} déjà à jour` : ''} · rekordbox XML écrit sur la clé`;
-  if (r.skipped.length) msg += ` · ${r.skipped.length} ignoré(s)`;
-  statusHold = Date.now() + 10000; $('statusRight').textContent = msg;
-  $('statusRight').title = r.skipped.join('\n');
+  statusHold = 0; $('statusRight').textContent = '';
+  if (r.error) { toast('Copie impossible', { kind: 'error', text: r.error, duration: 0 }); return; }
+  if (r.cancelled) { toast('Copie annulée', { text: `${r.copied} / ${r.total} titres copiés` }); return; }
+  toast('Clé prête', {
+    kind: 'ok', duration: 8000,
+    text: `${r.copied} copié(s)${r.kept ? `, ${r.kept} déjà à jour` : ''}, rekordbox XML écrit sur la clé${r.skipped.length ? ` · ${r.skipped.length} ignoré(s)` : ''}`,
+    tip: r.skipped.length ? r.skipped.slice(0, 25).map(esc).join('<br>') : '',
+  });
 });
 $('copyCancel').addEventListener('click', () => api.cancelCopy());
 
@@ -1298,8 +1329,6 @@ function applySnapshot(snap) {
   state.root = snap.root;
   state.tracks = new Map(snap.tracks.map((t) => [t.id, t]));
   state.trackStamp++;
-  $('rootName').textContent = snap.root;
-  $('rootName').title = snap.root;
   if (state.folder && ![...state.tracks.values()].some((t) => t.dir != null && (t.dir === state.folder || t.dir.startsWith(state.folder + SEP)))) state.folder = '';
   updateStats(snap.stats);
   state.dirtyTree = true;
@@ -1386,8 +1415,33 @@ function updText(st) {
     default: return `Version installée : ${st.current}`;
   }
 }
+// toast once per new state: ready to install, available (automatic download off), failure
+let updToasted = '';
+function toastUpdate(st) {
+  const key = st.status + st.latest;
+  if (key === updToasted) return;
+  if (st.status === 'ready') {
+    updToasted = key;
+    toast(`CrateScope ${st.latest} est prête`, {
+      id: 'update', kind: 'ok', duration: 0, text: "Elle s'installe au prochain redémarrage de l'app.",
+      actions: [{ label: 'Redémarrer', primary: true, run: () => api.installUpdate() }, { label: 'Plus tard', run: () => {} }],
+    });
+  } else if (st.status === 'available' && state.settings && state.settings.autoUpdate === false) {
+    updToasted = key;
+    toast(`CrateScope ${st.latest} est disponible`, {
+      id: 'update', duration: 0, actions: [{ label: 'Télécharger', primary: true, run: () => api.downloadUpdate() }, { label: 'Plus tard', run: () => {} }],
+    });
+  } else if (st.status === 'error' && st.latest) {
+    updToasted = key;
+    toast('Mise à jour impossible', {
+      id: 'update', kind: 'error', duration: 0, text: st.error,
+      actions: st.url ? [{ label: 'Voir la page', run: () => api.openExternal(st.url) }] : [],
+    });
+  }
+}
 function renderUpdate(st) {
   upd = st;
+  toastUpdate(st);
   $('updInfo').textContent = updText(st);
   const b = $('updBtn');
   const show = ['available', 'downloading', 'ready'].includes(st.status) || (st.status === 'error' && st.latest);

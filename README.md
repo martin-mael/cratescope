@@ -25,7 +25,7 @@ npm start -- ~/Music/Crate     # ouvre directement un dossier
 
 ## Utilisation
 
-- Clic = sélectionner (le titre en cours continue), double-clic / Entrée = lire, clic sur une mini-waveform = lire depuis ce point. En fin de titre, le premier de la [file d'attente](#file-dattente) démarre, sinon le suivant de la liste.
+- Clic = sélectionner (le titre en cours continue), double-clic / Entrée = lire. En fin de titre, le premier de la [file d'attente](#file-dattente) démarre, sinon le suivant de la liste.
 - Espace lecture/pause (lit le titre sélectionné si rien n'est chargé), ⏮ ou touche Début = retour au début du titre (garde lecture / pause), ↑/↓ déplacer la sélection, ←/→ avance de 8 s (Maj : 30 s), molette sur la waveform = zoom, glisser = scratch.
 - **Mixables** (touche `m`) : n'affiche que les titres compatibles harmoniquement avec le titre chargé (Camelot ±1 / relatif) et à ±6 % de BPM (ou demi/double tempo).
 - Glisser des lignes vers Rekordbox, Ableton, le Finder… ; clic droit : Finder, ré-analyse, re-recherche en ligne, Discogs/MusicBrainz.
@@ -41,6 +41,8 @@ Rien n'est écrit dans les fichiers audio : tout reste dans CrateScope et part d
 - **Titre / artiste / genre** : `F2` ou clic droit › « Modifier les infos… », aussi sur une sélection (un champ laissé vide n'est pas changé). Un genre corrigé remplace ceux des tags et en ligne. Les valeurs corrigées s'affichent en bleu ; « ↺ » ou clic droit › « Rétablir les infos du fichier » reviennent aux tags.
 
 ## Recherche
+
+`⌘K` (`Ctrl+K` sous Windows) ou `⌘F` place le curseur dans la recherche. Les filtres (BPM, tonalité, sous-dossiers, hors playlist, mixables) sont dans la barre au-dessus de la liste, avec le nombre de titres affichés.
 
 Sans syntaxe, tous les mots doivent apparaître (titre, artiste, genres, styles, label, album, commentaire, nom de fichier, tonalité, BPM). Accents et majuscules ignorés. Avec syntaxe (infobulle du champ de recherche) :
 
