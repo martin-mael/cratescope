@@ -54,9 +54,9 @@
       }
     }
     // clipping only means something on lossless files (decoding a loud MP3 always overshoots 0 dB),
-    // and even then it's usually a mastering choice, not a defect of this copy
-    if (q.lossless && q.clipPerMin >= 500) add('warn', 'Saturé', `Écrêtage important : ${Math.round(q.clipPerMin)} / min`, 'Le mastering écrête beaucoup (fréquent en hardcore / donk) : son plus dur, à surveiller sur le gain.');
-    else if (q.lossless && q.clipPerMin >= 50) add('info', 'Écrêtage', `Écrêtage léger : ${Math.round(q.clipPerMin)} / min`, 'Quelques crêtes écrêtées au mastering, rarement audible.');
+    // and it's a mastering choice (gabber, hardcore, donk…), never a defect of this copy: info only
+    if (q.lossless && q.clipPerMin >= 500) add('info', 'Mastering saturé', `Mastering très écrêté : ${Math.round(q.clipPerMin)} écrêtages / min`, 'Choix de mastering, attendu en gabber / hardcore / donk : pas un défaut du fichier. Juste à garder en tête pour le gain.');
+    else if (q.lossless && q.clipPerMin >= 50) add('info', 'Écrêtage', `Écrêtage léger : ${Math.round(q.clipPerMin)} écrêtages / min`, 'Quelques crêtes écrêtées au mastering, rarement audible. Pas un défaut du fichier.');
     if (q.fakeStereo) add('warn', 'Faux stéréo', 'Mono enregistré en stéréo', 'Les deux canaux sont identiques : pas de largeur stéréo.');
     if (q.leadSilence >= 2) add('info', 'Silence début', `Silence de ${sec(q.leadSilence)} au début`, 'À sauter pour caler le morceau (cue de départ).');
     if (q.trailSilence >= 4) add('info', 'Silence fin', `Silence de ${sec(q.trailSilence)} à la fin`, 'Fin du fichier silencieuse : ne pas compter dessus pour la transition.');

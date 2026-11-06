@@ -151,8 +151,8 @@ $('thead').addEventListener('contextmenu', (e) => {
 
 const QUALITY_LEGEND = '<b>Qualité du fichier</b> (vérifiée en arrière-plan après l\'analyse)<div class="tip-sep"></div>'
   + '<b class="q-bad">✖ Problème</b> : faux lossless (fabriqué depuis un MP3), MP3 ré-encodé, bitrate faible<br>'
-  + '<b class="q-warn">▲ À vérifier</b> : lossless douteux, bitrate moyen, faux stéréo, mastering très saturé<br>'
-  + '<b class="q-info">• Info</b> : silence au début / à la fin, léger écrêtage<br>'
+  + '<b class="q-warn">▲ À vérifier</b> : lossless douteux, bitrate moyen, faux stéréo<br>'
+  + '<b class="q-info">• Info</b> : silence au début / à la fin, mastering écrêté (un choix, pas un défaut), filtre de mastering<br>'
   + '<b class="q-ok">✓ OK</b> : rien à signaler<div class="tip-sep"></div>Survoler une case pour le détail. Recherche : quality:bad, quality:issue';
 
 // ---------- tooltips ----------
