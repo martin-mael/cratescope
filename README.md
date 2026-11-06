@@ -63,7 +63,7 @@ En arrière-plan, après l'analyse (un passage ffmpeg sur des extraits, ~0,2 s p
 
 - **Faux lossless** : un FLAC / WAV / AIFF dont le spectre s'arrête net à ~16, 19 ou 20 kHz a été fabriqué à partir d'un MP3 / AAC (128, 192 ou 320 kbps). Un MP3 « 320 kbps » coupé à 16 kHz a été ré-encodé depuis un 128.
 - Bitrate faible (< 160 kbps) ou moyen (< 210 kbps), échantillonnage < 44,1 kHz.
-- Mono enregistré en stéréo, silence au début ou à la fin, écrêtage du mastering (simple info, mesuré sur les fichiers lossless uniquement : c'est un choix artistique, attendu en gabber ou en hardcore, pas un défaut du fichier).
+- Mono enregistré en stéréo, écrêtage du mastering (simple info, mesuré sur les fichiers lossless uniquement : c'est un choix artistique, attendu en gabber ou en hardcore, pas un défaut du fichier).
 
 Une coupure à ~20 kHz sur un lossless n'est qu'une suspicion ; au-dessus de 20,5 kHz c'est un filtre de mastering (inaudible, non signalé), un MP3 320 kbps s'arrêtant vers 20 kHz. Recherche : `quality:bad`, `quality:issue`.
 

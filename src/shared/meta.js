@@ -28,7 +28,6 @@
   // short (column label), text (detail), why (what it means, for the tooltip).
   const LOSSY = new Set(['mp3', 'aac', 'm4a', 'mp4', 'ogg', 'oga', 'opus', 'wma', 'webm']);
   const kHz = (hz) => (hz / 1000).toFixed(1).replace('.', ',') + ' kHz';
-  const sec = (s) => String(s).replace('.', ',') + ' s';
   function qualityIssues(t) {
     const out = [];
     const p = t.probe, q = t.quality;
@@ -57,8 +56,6 @@
     if (q.lossless && q.clipPerMin >= 500) add('info', 'Mastering saturé', 'Mastering très saturé', 'Choix de mastering, normal pour certains styles. Pas un défaut du fichier.');
     else if (q.lossless && q.clipPerMin >= 50) add('info', 'Écrêtage', 'Mastering légèrement saturé', 'Choix de mastering. Pas un défaut du fichier.');
     if (q.fakeStereo) add('warn', 'Faux stéréo', 'Mono enregistré en stéréo', 'Les deux canaux sont identiques.');
-    if (q.leadSilence >= 2) add('info', 'Silence début', `Silence de ${sec(q.leadSilence)} au début`, '');
-    if (q.trailSilence >= 4) add('info', 'Silence fin', `Silence de ${sec(q.trailSilence)} à la fin`, '');
     return out;
   }
   // 'bad' | 'warn' | 'ok' | 'info' | null (not checked yet)
