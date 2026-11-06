@@ -95,7 +95,7 @@ dup:yes  played:yes|no  pl:no (dans aucune playlist)
       <div id="tree" class="tree"></div>
       <div class="side-head pl-head">Vues</div>
       <div id="views" class="views"></div>
-      <div class="side-head pl-head">Playlists <button id="btnNewPl" class="pl-add" title="Nouvelle playlist, ou playlist intelligente (recherche enregistrée)">＋</button></div>
+      <div class="side-head pl-head">Playlists <button id="btnNewPl" class="pl-add" title="Nouvelle playlist">＋</button></div>
       <div id="plList" class="pl-list"></div>
     </aside>
     <section class="list">
@@ -147,7 +147,7 @@ dup:yes  played:yes|no  pl:no (dans aucune playlist)
       </fieldset>
       <fieldset>
         <legend>Mises à jour</legend>
-        <label class="toggle"><input id="sUpd" type="checkbox" /> Mettre à jour automatiquement (téléchargée en arrière-plan, installée au redémarrage)</label>
+        <label class="toggle"><input id="sUpd" type="checkbox" /> Mettre à jour automatiquement</label>
         <div class="row-inline"><button type="button" id="btnCheckUpd" class="btn">Rechercher une mise à jour</button><span id="updInfo" class="hint upd-info"></span></div>
       </fieldset>
       <div class="dlg-actions">
@@ -171,10 +171,10 @@ dup:yes  played:yes|no  pl:no (dans aucune playlist)
   <dialog id="infoDlg" class="dialog">
     <form method="dialog">
       <h2 id="infoTitle">Modifier les infos</h2>
-      <p class="hint" id="infoHint">Les fichiers audio ne sont pas modifiés : les corrections restent dans CrateScope et partent dans les exports (rekordbox XML, CSV, M3U8).</p>
-      <label>Titre <span class="row-inline"><input id="iTitle" class="input wide" type="text" autocomplete="off" /><button type="button" class="btn icon reset-field" data-f="title" title="Revenir au tag du fichier">↺</button></span></label>
-      <label>Artiste <span class="row-inline"><input id="iArtist" class="input wide" type="text" autocomplete="off" /><button type="button" class="btn icon reset-field" data-f="artist" title="Revenir au tag du fichier">↺</button></span></label>
-      <label>Genre (séparés par des virgules ; remplace les genres des tags et en ligne) <span class="row-inline"><input id="iGenre" class="input wide" type="text" autocomplete="off" /><button type="button" class="btn icon reset-field" data-f="genre" title="Revenir aux genres des tags et en ligne">↺</button></span></label>
+      <p class="hint" id="infoHint">Les fichiers audio ne sont pas modifiés.</p>
+      <label>Titre <span class="row-inline"><input id="iTitle" class="input wide" type="text" autocomplete="off" /><button type="button" class="btn icon reset-field" data-f="title" title="Revenir au titre d'origine">↺</button></span></label>
+      <label>Artiste <span class="row-inline"><input id="iArtist" class="input wide" type="text" autocomplete="off" /><button type="button" class="btn icon reset-field" data-f="artist" title="Revenir à l'artiste d'origine">↺</button></span></label>
+      <label>Genre (séparés par des virgules) <span class="row-inline"><input id="iGenre" class="input wide" type="text" autocomplete="off" /><button type="button" class="btn icon reset-field" data-f="genre" title="Revenir au genre d'origine">↺</button></span></label>
       <label>Commentaire <span class="row-inline"><input id="iComment" class="input wide" type="text" autocomplete="off" /><button type="button" class="btn icon reset-field" data-f="comment" title="Effacer le commentaire">↺</button></span></label>
       <div class="dlg-actions">
         <button value="cancel" class="btn">Annuler</button>

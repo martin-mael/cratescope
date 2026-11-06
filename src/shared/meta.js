@@ -36,30 +36,30 @@
     const add = (level, short, text, why) => out.push({ level, short, text, why });
     const lossy = LOSSY.has(t.ext) && p.codec !== 'alac' && p.codec !== 'flac';
     // (VBR V0 averages 220-260 kbps and is fine: only clearly low bitrates are flagged)
-    if (lossy && p.bitrate && p.bitrate < 160) add('bad', 'Bitrate faible', `Bitrate faible : ${p.bitrate} kbps`, 'Aigus et détails audibles en moins sur un système de club. Chercher une version 320 kbps ou lossless.');
-    else if (lossy && p.bitrate && p.bitrate < 210 && p.codec === 'mp3') add('warn', 'Bitrate moyen', `Bitrate moyen : ${p.bitrate} kbps`, 'Correct au casque, limite sur un gros système. Une version 320 kbps serait préférable.');
-    if (p.sampleRate && p.sampleRate < 44100) add('warn', 'Échantillonnage', `Échantillonnage ${kHz(p.sampleRate)}`, 'En dessous de la qualité CD (44,1 kHz) : aigus coupés.');
+    if (lossy && p.bitrate && p.bitrate < 160) add('bad', 'Bitrate faible', `Bitrate faible : ${p.bitrate} kbps`, 'Perte audible sur un système de club. Une version 320 kbps ou lossless serait préférable.');
+    else if (lossy && p.bitrate && p.bitrate < 210 && p.codec === 'mp3') add('warn', 'Bitrate moyen', `Bitrate moyen : ${p.bitrate} kbps`, 'Limite sur un gros système. Une version 320 kbps serait préférable.');
+    if (p.sampleRate && p.sampleRate < 44100) add('warn', 'Échantillonnage', `Échantillonnage ${kHz(p.sampleRate)}`, 'En dessous de la qualité CD.');
     if (!q || q.error) return out;
     if (q.cutoff) {
       const c = q.cutoff;
       if (q.lossless) {
-        if (c <= 17500) add('bad', 'Faux lossless', `Faux lossless : spectre coupé à ${kHz(c)}`, 'Ce fichier lossless a été fabriqué à partir d\'un MP3 ≈ 128 kbps : il n\'en a que la qualité, pour 5 fois la taille.');
-        else if (c <= 19600) add('bad', 'Faux lossless', `Faux lossless : spectre coupé à ${kHz(c)}`, 'Ce fichier lossless a été fabriqué à partir d\'un MP3 ou AAC ≈ 192 kbps : il n\'en a que la qualité.');
+        if (c <= 17500) add('bad', 'Faux lossless', `Faux lossless : spectre coupé à ${kHz(c)}`, 'Fabriqué à partir d\'un MP3 128 kbps : il n\'en a que la qualité.');
+        else if (c <= 19600) add('bad', 'Faux lossless', `Faux lossless : spectre coupé à ${kHz(c)}`, 'Fabriqué à partir d\'un MP3 192 kbps : il n\'en a que la qualité.');
         // LAME 320 kbps stops at ~20.0-20.4 kHz; mastering filters / resamplers often sit at 20.5-21 kHz
-        else if (c <= 20500) add('warn', 'Lossless douteux', `Spectre coupé à ${kHz(c)}`, 'Coupure typique d\'un MP3 320 kbps (≈ 20 kHz) : peut-être fabriqué à partir d\'un 320, différence quasi inaudible. Ou un mastering filtré.');
-        else if (c <= 21000) add('info', 'Filtré', `Filtré à ${kHz(c)}`, 'Plus haut que la coupure d\'un MP3 320 kbps (≈ 20 kHz) : sans doute un filtre de mastering ou de conversion. Inaudible, pas un faux.');
+        else if (c <= 20500) add('warn', 'Lossless douteux', `Spectre coupé à ${kHz(c)}`, 'Peut-être fabriqué à partir d\'un MP3 320 kbps (différence quasi inaudible).');
+        else if (c <= 21000) add('info', 'Filtré', `Filtré à ${kHz(c)}`, 'Filtre de mastering, inaudible. Pas un faux.');
       } else if (p.bitrate >= 256) {
-        if (c <= 17500) add('bad', 'Ré-encodé', `Ré-encodé : spectre coupé à ${kHz(c)} malgré ${p.bitrate} kbps`, 'Un fichier ≈ 128 kbps ré-encodé en haut débit : la qualité réelle est celle du 128.');
-        else if (c <= 19600) add('warn', 'Ré-encodé ?', `Spectre coupé à ${kHz(c)} malgré ${p.bitrate} kbps`, 'Probablement ré-encodé depuis une source ≈ 192 kbps.');
+        if (c <= 17500) add('bad', 'Ré-encodé', `Ré-encodé : spectre coupé à ${kHz(c)} malgré ${p.bitrate} kbps`, 'Un MP3 128 kbps ré-encodé : il n\'en a que la qualité.');
+        else if (c <= 19600) add('warn', 'Ré-encodé ?', `Spectre coupé à ${kHz(c)} malgré ${p.bitrate} kbps`, 'Probablement ré-encodé depuis un MP3 192 kbps.');
       }
     }
     // clipping only means something on lossless files (decoding a loud MP3 always overshoots 0 dB),
     // and it's a mastering choice (gabber, hardcore, donk…), never a defect of this copy: info only
-    if (q.lossless && q.clipPerMin >= 500) add('info', 'Mastering saturé', `Mastering très écrêté : ${Math.round(q.clipPerMin)} écrêtages / min`, 'Choix de mastering, attendu en gabber / hardcore / donk : pas un défaut du fichier. Juste à garder en tête pour le gain.');
-    else if (q.lossless && q.clipPerMin >= 50) add('info', 'Écrêtage', `Écrêtage léger : ${Math.round(q.clipPerMin)} écrêtages / min`, 'Quelques crêtes écrêtées au mastering, rarement audible. Pas un défaut du fichier.');
-    if (q.fakeStereo) add('warn', 'Faux stéréo', 'Mono enregistré en stéréo', 'Les deux canaux sont identiques : pas de largeur stéréo.');
-    if (q.leadSilence >= 2) add('info', 'Silence début', `Silence de ${sec(q.leadSilence)} au début`, 'À sauter pour caler le morceau (cue de départ).');
-    if (q.trailSilence >= 4) add('info', 'Silence fin', `Silence de ${sec(q.trailSilence)} à la fin`, 'Fin du fichier silencieuse : ne pas compter dessus pour la transition.');
+    if (q.lossless && q.clipPerMin >= 500) add('info', 'Mastering saturé', 'Mastering très saturé', 'Choix de mastering, normal pour certains styles. Pas un défaut du fichier.');
+    else if (q.lossless && q.clipPerMin >= 50) add('info', 'Écrêtage', 'Mastering légèrement saturé', 'Choix de mastering. Pas un défaut du fichier.');
+    if (q.fakeStereo) add('warn', 'Faux stéréo', 'Mono enregistré en stéréo', 'Les deux canaux sont identiques.');
+    if (q.leadSilence >= 2) add('info', 'Silence début', `Silence de ${sec(q.leadSilence)} au début`, '');
+    if (q.trailSilence >= 4) add('info', 'Silence fin', `Silence de ${sec(q.trailSilence)} à la fin`, '');
     return out;
   }
   // 'bad' | 'warn' | 'ok' | 'info' | null (not checked yet)

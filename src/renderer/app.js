@@ -71,8 +71,8 @@ const stars = (n) => [1, 2, 3, 4, 5].map((i) => `<span class="star${i <= n ? ' o
 const COLS = [
   { key: 'status', label: '', width: '18px', sort: (t) => t.status, cell: (t) => `<div class="dot ${t.status}" title="${t.status === 'error' ? esc(t.error) : t.status}"></div>` },
   { key: 'wave', label: 'Waveform', width: '136px', sort: (t) => fDur(t), cell: () => '<canvas></canvas>' },
-  { key: 'title', label: 'Titre', width: 'minmax(120px, 2fr)', sort: (t) => meta.fold(fTitle(t)), cell: (t) => `<span${t.meta && t.meta.title ? ' class="edited" title="Tag du fichier : ' + esc(tags(t).title || '–') + '"' : ` title="${esc(t.rel)}"`}>${esc(fTitle(t))}</span>${dupBadge(t)}` },
-  { key: 'artist', label: 'Artiste', width: 'minmax(80px, 1.4fr)', sort: (t) => meta.fold(fArtist(t)), cell: (t) => (t.meta && t.meta.artist ? `<span class="edited" title="Tag du fichier : ${esc(tags(t).artist || '–')}">${esc(fArtist(t))}</span>` : esc(fArtist(t))) },
+  { key: 'title', label: 'Titre', width: 'minmax(120px, 2fr)', sort: (t) => meta.fold(fTitle(t)), cell: (t) => `<span${t.meta && t.meta.title ? ' class="edited" title="Titre d\'origine : ' + esc(tags(t).title || t.parsed.title || '–') + '"' : ` title="${esc(t.rel)}"`}>${esc(fTitle(t))}</span>${dupBadge(t)}` },
+  { key: 'artist', label: 'Artiste', width: 'minmax(80px, 1.4fr)', sort: (t) => meta.fold(fArtist(t)), cell: (t) => (t.meta && t.meta.artist ? `<span class="edited" title="Artiste d'origine : ${esc(tags(t).artist || t.parsed.artist || '–')}">${esc(fArtist(t))}</span>` : esc(fArtist(t))) },
   { key: 'rating', label: 'Note', width: '78px', sort: (t) => -meta.rating(t), cell: (t) => stars(meta.rating(t)) },
   { key: 'bpm', label: 'BPM', width: '62px', sort: (t) => (t.analysis ? t.analysis.bpm : 1e9), cell: bpmCell },
   { key: 'key', label: 'Key', width: '62px', sort: (t) => camSort(t.analysis && t.analysis.camelot), cell: (t) => (t.analysis ? `<span class="key" style="background:${keyColor(t.analysis.camelot)}">${t.analysis.camelot}</span><span class="key-name">${t.analysis.key}</span>` : '') },
@@ -149,11 +149,11 @@ $('thead').addEventListener('contextmenu', (e) => {
   api.columnsMenu(COLS.filter((c) => c.label && c.key !== 'title').map((c) => ({ key: c.key, label: c.label, checked: shown.has(c.key) })));
 });
 
-const QUALITY_LEGEND = '<b>Qualité du fichier</b> (vérifiée en arrière-plan après l\'analyse)<div class="tip-sep"></div>'
-  + '<b class="q-bad">✖ Problème</b> : faux lossless (fabriqué depuis un MP3), MP3 ré-encodé, bitrate faible<br>'
+const QUALITY_LEGEND = '<b>Qualité du fichier</b><div class="tip-sep"></div>'
+  + '<b class="q-bad">✖ Problème</b> : faux lossless, MP3 ré-encodé, bitrate faible<br>'
   + '<b class="q-warn">▲ À vérifier</b> : lossless douteux, bitrate moyen, faux stéréo<br>'
-  + '<b class="q-info">• Info</b> : silence au début / à la fin, mastering écrêté (un choix, pas un défaut), filtre de mastering<br>'
-  + '<b class="q-ok">✓ OK</b> : rien à signaler<div class="tip-sep"></div>Survoler une case pour le détail. Recherche : quality:bad, quality:issue';
+  + '<b class="q-info">• Info</b> : silence au début ou à la fin, mastering saturé ou filtré<br>'
+  + '<b class="q-ok">✓ OK</b> : rien à signaler';
 
 // ---------- tooltips ----------
 // instant, styled tooltips for [data-tip] (HTML built by us, escaped where it holds file data)
@@ -191,8 +191,8 @@ const Q_LABEL = { bad: 'Problème', warn: 'À vérifier', info: 'Info', ok: 'OK'
 const issuesOf = (t) => meta.qualityIssues(t).sort((a, b) => Q_ORDER[a.level] - Q_ORDER[b.level]);
 function qualityTip(t) {
   const issues = issuesOf(t);
-  if (!issues.length) return '<b class="q-ok">✓ Aucun problème détecté</b><br>Spectre complet, pas de saturation ni de faux stéréo, bitrate correct.';
-  return issues.map((i) => `<b class="q-${i.level}">${Q_ICON[i.level]} ${esc(i.text)}</b><br>${esc(i.why)}`).join('<div class="tip-sep"></div>');
+  if (!issues.length) return '<b class="q-ok">✓ Aucun problème détecté</b>';
+  return issues.map((i) => `<b class="q-${i.level}">${Q_ICON[i.level]} ${esc(i.text)}</b>${i.why ? '<br>' + esc(i.why) : ''}`).join('<div class="tip-sep"></div>');
 }
 function qualityCell(t) {
   const lvl = meta.qualityLevel(t);
@@ -216,7 +216,7 @@ function dupTip(t, d) {
     const mark = i === 0 && d.best ? '<span class="q-ok">✓</span>' : '•';
     return `<div class="${id === t.id ? 'tip-me' : ''}">${mark} ${esc(fFormat(c))} · ${(c.size / 1048576).toFixed(1)} Mo${q}${id === t.id ? ' <i>(celle-ci)</i>' : ''}<br><span class="tip-path">${esc(c.external ? c.path : c.rel)}</span></div>`;
   }).join('');
-  return `<b>${d.size} copies de ce titre</b><br>Même artiste, même titre et même durée à 2 s près.<div class="tip-sep"></div>${lines}`;
+  return `<b>${d.size} copies de ce titre</b><div class="tip-sep"></div>${lines}`;
 }
 function dupBadge(t) {
   const d = dups().get(t.id);
@@ -230,7 +230,7 @@ function playCount(t) { return state.history.counts[t.id] || 0; }
 function isPlayed(t) { return state.played.has(t.id); }
 function historyRows() {
   const h = state.history.sessions;
-  const rows = [`<div class="pl view" data-hist-toggle="1" title="Titres écoutés au moins 30 s, session par session (clic droit sur une session : playlist, export, suppression)">
+  const rows = [`<div class="pl view" data-hist-toggle="1" title="Titres écoutés, par session. Clic droit sur une session : convertir en playlist, exporter, supprimer.">
     <span>🕘</span><span class="nm">Historique</span><span class="ct">${h.length ? (state.histOpen ? '▼' : '▶') : ''}</span></div>`];
   if (state.histOpen) {
     for (const s of h.slice(0, 40)) {
@@ -596,7 +596,7 @@ function renderPlaylists() {
 // ---------- views: duplicates, history ----------
 function renderViews() {
   const groups = new Set([...dups().values()].map((d) => d.group)).size;
-  const rows = [`<div class="pl view ${state.special === 'dups' ? 'active' : ''}" data-view="dups" data-tip="${esc('<b>Doublons</b><br>Titres présents en plusieurs exemplaires : même artiste, même titre (« original mix », « feat. », accents ignorés) et même durée à 2 s près. Les remixes et edits n\'en font pas partie.<div class=&quot;tip-sep&quot;></div>« meilleure » : la copie à garder (vrai lossless, puis bitrate, puis taille ; un faux lossless passe derrière un bon MP3). « identiques » : copies équivalentes. Rien n\'est supprimé depuis l\'app.')}">
+  const rows = [`<div class="pl view ${state.special === 'dups' ? 'active' : ''}" data-view="dups" data-tip="${esc('<b>Doublons</b><br>Titres présents en plusieurs exemplaires. « meilleure » : la copie à garder.')}">
     <span>⧉</span><span class="nm">Doublons</span><span class="ct">${groups || ''}</span></div>`];
   rows.push(...historyRows());
   $('views').innerHTML = rows.join('');
@@ -889,7 +889,7 @@ function renderDeckInfo(t) {
   lines.push(`${fFormat(t)} · ${(t.size / 1048576).toFixed(1)} Mo${a.lra != null ? ` · LRA ${a.lra} LU` : ''}`);
   meta.comment(t)
     ? lines.push(`<span class="d-comment" title="Cliquer pour modifier">💬 ${esc(meta.comment(t))}</span>`)
-    : lines.push('<span class="d-comment add" title="Commentaire : exporté dans rekordbox">＋ commentaire</span>');
+    : lines.push('<span class="d-comment add">＋ commentaire</span>');
   const tagInfo = [tg.tagBpm && `BPM ${tg.tagBpm}`, tg.tagKey && `Key ${tg.tagKey}`].filter(Boolean).join(', ');
   if (tagInfo) lines.push(`Tags du fichier : ${tagInfo}`);
   if (a.bpm && a.gridRmsMs != null) {
@@ -1043,7 +1043,7 @@ document.querySelectorAll('.reset-field').forEach((b) => b.addEventListener('cli
   const t = state.tracks.get(targetIds()[0]);
   inp.dataset.reset = '1';
   inp.value = t && state.selected.size <= 1 ? fileValue[f](t) : '';
-  inp.placeholder = 'valeur du fichier / en ligne';
+  inp.placeholder = "valeur d'origine";
   inp.classList.add('reset');
 }));
 document.querySelectorAll('#infoDlg input').forEach((inp) => inp.addEventListener('input', () => { inp.dataset.reset = ''; inp.classList.remove('reset'); }));
