@@ -39,6 +39,8 @@ const DEFAULTS = {
   discogsKey: '',
   discogsSecret: '',
   autoUpdate: true,
+  accent: null, // accent colour (#rrggbb, null = default blue)
+  title: null,  // top bar title: [{ text, color: 'dim'|'text'|'accent'|'#rrggbb' }] (null = CrateScope)
   columns: null, // visible list columns (null = default set)
   lastRoot: null,
 };

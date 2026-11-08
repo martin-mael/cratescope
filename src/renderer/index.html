@@ -9,7 +9,7 @@
 </head>
 <body>
   <header class="topbar">
-    <div class="brand">Crate<b>Scope</b></div>
+    <div id="brand" class="brand"><span style="color: var(--dim)">Crate</span><span style="color: var(--accent)">Scope</span></div>
     <div class="search-wrap">
       <span class="search-ico">⌕</span>
       <input id="search" class="input search" type="search" placeholder="Rechercher un titre, un artiste, un genre…" title="Recherche : tous les mots doivent apparaître.
@@ -136,7 +136,25 @@ dup:yes  played:yes|no  pl:no (dans aucune playlist)
       <h2>Réglages</h2>
       <div class="tabs">
         <button type="button" class="tab on" data-tab="general">Général</button>
+        <button type="button" class="tab" data-tab="look">Apparence</button>
         <button type="button" class="tab" data-tab="keys">Raccourcis clavier</button>
+      </div>
+      <div class="tab-pane" data-pane="look" hidden>
+        <fieldset>
+          <legend>Couleur d'accent</legend>
+          <div id="accentSwatches" class="swatches"></div>
+          <p class="hint">Boutons, sélection, filtres actifs. La couleur de lecture (orange) ne change pas.</p>
+        </fieldset>
+        <fieldset>
+          <legend>Titre</legend>
+          <div id="titlePreview" class="title-preview"></div>
+          <div id="titleParts" class="title-parts"></div>
+          <div class="row-inline">
+            <button type="button" id="titleAdd" class="btn">＋ Ajouter un mot</button>
+            <button type="button" id="titleReset" class="btn">Rétablir CrateScope</button>
+          </div>
+          <p class="hint">Les mots sont collés les uns aux autres ; ajoute une espace dans un mot pour les séparer.</p>
+        </fieldset>
       </div>
       <div class="tab-pane" data-pane="keys" hidden><div id="keysList" class="keys"></div></div>
       <div class="tab-pane" data-pane="general">

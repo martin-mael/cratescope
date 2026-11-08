@@ -148,6 +148,10 @@ La tonalité est exportée en notation classique (Am, F#m, Eb…) ; la notation 
 - BPM à moitié ou doublé ? Boutons **÷2 / ×2** à côté du BPM dans le deck, touches `/` et `*` (sur la sélection), ou clic droit. La correction est gardée même après une ré-analyse ; le BPM corrigé s'affiche en bleu.
 - Un `*` à côté du BPM signale un désaccord avec le tag BPM du fichier.
 
+## Apparence
+
+⚙︎ › **Apparence** : couleur d'accent (8 couleurs ou n'importe quelle autre) et titre de la barre du haut, composé de plusieurs mots collés avec chacun sa couleur (gris, blanc, accent ou au choix), comme « Crate » + « Scope ». Aperçu en direct ; « Annuler » revient à l'apparence enregistrée.
+
 ## Mises à jour
 
 L'app vérifie au lancement (puis toutes les 6 h) la dernière release GitHub. Si elle est plus récente, elle est téléchargée en arrière-plan, son empreinte SHA-256 est vérifiée avec celle publiée par GitHub, puis un bouton « Redémarrer pour passer à … » apparaît en bas à droite. Si tu quittes l'app sans cliquer, la mise à jour s'installe quand même à la fermeture.

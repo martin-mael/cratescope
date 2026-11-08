@@ -450,7 +450,7 @@ function dragImage(ids) {
   const g = c.getContext('2d');
   g.scale(R, R);
   g.fillStyle = 'rgba(27, 30, 36, 0.94)';
-  g.strokeStyle = '#2fb5ff';
+  g.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#2fb5ff';
   g.lineWidth = 1;
   g.beginPath(); g.roundRect(0.5, 0.5, W - 1, H - 1, 8); g.fill(); g.stroke();
   // record with a coloured label (key colour of the first track)
@@ -1450,24 +1450,89 @@ function showTab(name) {
 }
 document.querySelectorAll('#settingsDlg .tab').forEach((t) => t.addEventListener('click', () => showTab(t.dataset.tab)));
 
+// ---------- appearance: accent colour, title ----------
+const DEFAULT_ACCENT = '#2fb5ff';
+const DEFAULT_TITLE = [{ text: 'Crate', color: 'dim' }, { text: 'Scope', color: 'accent' }];
+const ACCENTS = [['#2fb5ff', 'Bleu'], ['#22d3c5', 'Turquoise'], ['#4ade80', 'Vert'], ['#a3e635', 'Citron'], ['#a78bfa', 'Violet'], ['#f472b6', 'Rose'], ['#f87171', 'Rouge'], ['#fbbf24', 'Jaune']];
+const NAMED = { dim: 'var(--dim)', text: 'var(--text)', accent: 'var(--accent)' };
+const isHex = (c) => /^#[0-9a-f]{6}$/i.test(c || '');
+const partColor = (c) => NAMED[c] || (isHex(c) ? c : 'var(--text)');
+function applyLook(accent, title) {
+  const a = isHex(accent) ? accent : DEFAULT_ACCENT;
+  const root = document.documentElement.style;
+  root.setProperty('--accent', a);
+  root.setProperty('--sel', `color-mix(in srgb, ${a} 28%, #0e0f12)`);
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(a.slice(i, i + 2), 16) / 255);
+  root.setProperty('--on-accent', 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.5 ? '#0b0d10' : '#ffffff'); // readable text on the accent
+  const parts = (Array.isArray(title) && title.some((p) => p.text)) ? title : DEFAULT_TITLE;
+  const html = parts.filter((p) => p.text).map((p) => `<span style="color: ${partColor(p.color)}">${esc(p.text)}</span>`).join('');
+  $('brand').innerHTML = html;
+  $('titlePreview').innerHTML = html;
+  document.title = parts.map((p) => p.text).join('') || 'CrateScope';
+}
+// editing copy, applied live, kept only on « Enregistrer »
+const look = { accent: DEFAULT_ACCENT, title: [] };
+function renderLook() {
+  const cur = look.accent.toLowerCase();
+  const preset = ACCENTS.some(([c]) => c === cur);
+  $('accentSwatches').innerHTML = ACCENTS.map(([c, name]) => `<button type="button" class="swatch ${c === cur ? 'on' : ''}" style="background: ${c}" data-c="${c}" title="${name}"></button>`).join('')
+    + `<label class="swatch-custom ${preset ? '' : 'on'}" title="Autre couleur" style="${preset ? '' : `background: ${cur}`}">${preset ? '＋' : ''}<input id="accentCustom" type="color" value="${cur}" /></label>`;
+  $('titleParts').innerHTML = look.title.map((p, i) => {
+    const custom = isHex(p.color);
+    return `<div class="title-part" data-i="${i}">
+      <input class="input" type="text" maxlength="24" value="${esc(p.text)}" data-f="text" placeholder="Mot" />
+      <select class="input" data-f="mode">
+        ${[['dim', 'Gris'], ['text', 'Blanc'], ['accent', "Couleur d'accent"], ['custom', 'Autre couleur']].map(([v, l]) => `<option value="${v}" ${(custom ? 'custom' : p.color) === v ? 'selected' : ''}>${l}</option>`).join('')}
+      </select>
+      <input type="color" data-f="hex" value="${custom ? p.color : '#ffffff'}" class="${custom ? '' : 'hidden'}" />
+      <button type="button" class="x" data-f="del" title="Retirer ce mot">✕</button>
+    </div>`;
+  }).join('');
+  applyLook(look.accent, look.title);
+}
+$('accentSwatches').addEventListener('click', (e) => { const b = e.target.closest('[data-c]'); if (b) { look.accent = b.dataset.c; renderLook(); } });
+$('accentSwatches').addEventListener('input', (e) => { if (e.target.id === 'accentCustom') { look.accent = e.target.value; applyLook(look.accent, look.title); } });
+$('accentSwatches').addEventListener('change', (e) => { if (e.target.id === 'accentCustom') renderLook(); });
+$('titleParts').addEventListener('input', (e) => {
+  const row = e.target.closest('[data-i]');
+  if (!row) return;
+  const p = look.title[+row.dataset.i], f = e.target.dataset.f;
+  if (f === 'text') p.text = e.target.value;
+  else if (f === 'hex') p.color = e.target.value;
+  else if (f === 'mode') { p.color = e.target.value === 'custom' ? (isHex(p.color) ? p.color : look.accent) : e.target.value; renderLook(); return; }
+  applyLook(look.accent, look.title);
+});
+$('titleParts').addEventListener('click', (e) => {
+  const row = e.target.closest('[data-i]');
+  if (row && e.target.dataset.f === 'del') { look.title.splice(+row.dataset.i, 1); renderLook(); }
+});
+$('titleAdd').addEventListener('click', () => { look.title.push({ text: '', color: 'text' }); renderLook(); $('titleParts').lastElementChild.querySelector('input').focus(); });
+$('titleReset').addEventListener('click', () => { look.title = DEFAULT_TITLE.map((p) => ({ ...p })); renderLook(); });
+
 async function openSettings(tab) {
   renderKeys();
   showTab(typeof tab === 'string' ? tab : 'general');
   const s = state.settings = await api.getSettings();
   $('sMin').value = s.minBpm; $('sMax').value = s.maxBpm; $('sConc').value = s.concurrency;
   $('sAuto').checked = s.autoOnline; $('sMb').checked = s.useMusicBrainz; $('sDg').checked = s.useDiscogs !== false; $('sDiscogs').value = s.discogsToken || ''; $('sDgKey').value = s.discogsKey || ''; $('sDgSecret').value = s.discogsSecret || ''; $('sUpd').checked = s.autoUpdate !== false;
+  look.accent = isHex(s.accent) ? s.accent : DEFAULT_ACCENT;
+  look.title = (Array.isArray(s.title) && s.title.length ? s.title : DEFAULT_TITLE).map((p) => ({ ...p }));
+  renderLook();
   $('settingsDlg').showModal();
 }
 $('btnSettings').addEventListener('click', openSettings);
 $('discogsLink').addEventListener('click', (e) => { e.preventDefault(); api.openExternal('https://www.discogs.com/settings/developers'); });
 $('btnStale').addEventListener('click', () => { api.reanalyzeStale(); });
 $('settingsDlg').addEventListener('close', async () => {
-  if ($('settingsDlg').returnValue !== 'ok') return;
+  if ($('settingsDlg').returnValue !== 'ok') { applyLook(state.settings.accent, state.settings.title); return; } // cancel: back to the saved look
   const min = Math.max(40, +$('sMin').value || 88), max = Math.max(min * 1.9, +$('sMax').value || 180);
   state.settings = await api.setSettings({
     minBpm: min, maxBpm: Math.round(max), concurrency: Math.max(1, Math.min(16, +$('sConc').value || 4)),
     autoOnline: $('sAuto').checked, useMusicBrainz: $('sMb').checked, useDiscogs: $('sDg').checked, discogsToken: $('sDiscogs').value.trim(), discogsKey: $('sDgKey').value.trim(), discogsSecret: $('sDgSecret').value.trim(), autoUpdate: $('sUpd').checked,
+    accent: look.accent.toLowerCase() === DEFAULT_ACCENT ? null : look.accent.toLowerCase(),
+    title: (() => { const t = look.title.filter((p) => p.text.length); return !t.length || JSON.stringify(t) === JSON.stringify(DEFAULT_TITLE) ? null : t; })(),
   });
+  applyLook(state.settings.accent, state.settings.title);
 });
 
 // ---------- updates ----------
@@ -1535,6 +1600,6 @@ api.updateState().then(renderUpdate);
 // ---------- boot ----------
 applyColumns(null);
 api.onColumnToggle(toggleColumn);
-api.getSettings().then((s) => { state.settings = s; applyColumns(s.columns); });
+api.getSettings().then((s) => { state.settings = s; applyColumns(s.columns); applyLook(s.accent, s.title); });
 api.openLast().then((snap) => { if (snap) applySnapshot(snap); else schedule(); })
   .then(() => api.playlists()).then((list) => { state.playlists = list; state.dirtyTree = true; invalidate(); });
