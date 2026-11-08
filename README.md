@@ -2,6 +2,10 @@
 
 Analyseur de bibliothèque musicale façon Rekordbox (Electron + ffmpeg) : BPM, tonalité (Camelot), waveform 3 bandes, loudness (LUFS), plus genre / style / label / année récupérés en ligne.
 
+![CrateScope : bibliothèque, deck et waveforms](docs/screenshots/library.png)
+
+<sub>Captures faites sur une bibliothèque de démonstration (morceaux synthétiques, artistes et labels fictifs).</sub>
+
 ## Lancer
 
 Prérequis : Node 18+ et `ffmpeg` / `ffprobe` dans le PATH (`brew install ffmpeg`).
@@ -19,6 +23,9 @@ npm start -- ~/Music/Crate     # ouvre directement un dossier
   - BPM : enveloppe d'onsets multi-bandes → autocorrélation → vérification des niveaux métriques (×2, ×3/2, ×4/3…) par peigne aligné en phase → affinage au 1/100 de BPM + grille de temps ;
   - tonalité : chromagramme blanchi, accent sur la basse, profils de Sha'ath (libKeyFinder) → notation Camelot ;
   - waveforms (mini, vue d'ensemble, détaillée à 150 points/s) en 3 bandes.
+
+  ![Deck : waveform détaillée avec grille et numéros de mesure, vue d'ensemble avec marqueurs drop / break](docs/screenshots/deck.png)
+
   Le dossier en cours d'affichage est analysé en priorité. Résultats en cache (`~/Library/Application Support/cratescope`), donc les réouvertures sont instantanées.
 - **Métadonnées en ligne** : MusicBrainz et Discogs, sans clé (Discogs donne genre **et** style, label, année). Facultatif dans ⚙︎ : un token personnel Discogs, ou la Consumer Key + Consumer Secret d'une application Discogs, ajoute les pochettes et accélère la recherche (60 titres/min au lieu de 25). Les titres déjà traités sont complétés automatiquement quand Discogs est activé ou qu'une clé est ajoutée.
 - Plage de BPM réglable (88–180 par défaut) : les tempos sont ramenés dans cette plage. Avec une plage large (ex. 80–220), entre un tempo et son double c'est le plus proche de ~140 BPM qui l'emporte, sauf si l'autre est nettement plus marqué.
@@ -27,9 +34,14 @@ npm start -- ~/Music/Crate     # ouvre directement un dossier
 
 - Clic = sélectionner (le titre en cours continue), double-clic / Entrée = lire. En fin de titre, le premier de la [file d'attente](#file-dattente) démarre, sinon le suivant de la liste.
 - Tous les raccourcis : ⚙︎ › « Raccourcis clavier », ou touche `?`.
+
+  ![Liste des raccourcis clavier](docs/screenshots/shortcuts.png)
+
 - `⌘→` titre suivant, `⌘←` retour au début (`Ctrl` sous Windows).
 - Espace lecture/pause (lit le titre sélectionné si rien n'est chargé), ⏮ ou touche Début = retour au début du titre (garde lecture / pause), ↑/↓ déplacer la sélection, ←/→ avance de 8 s (Maj : 30 s), molette sur la waveform = zoom, glisser = scratch.
 - **Mixables** (touche `m`) : n'affiche que les titres compatibles harmoniquement avec le titre chargé (Camelot ±1 / relatif) et à ±6 % de BPM (ou demi/double tempo).
+
+![Filtre Mixables : titres compatibles avec le titre chargé](docs/screenshots/mixables.png)
 - Glisser des lignes vers Rekordbox, Ableton, le Finder… ; clic droit : Finder, ré-analyse, re-recherche en ligne, Discogs/MusicBrainz.
 - Export de la vue (ou de la sélection) en playlist M3U8, en CSV ou en **rekordbox XML**.
 - **Colonnes** : clic droit sur l'en-tête pour afficher / masquer (Commentaire, Album, Écoutes, Chemin sont masquées par défaut). Clic sur un en-tête = tri, ⇧ clic = tri secondaire (ex. Genre puis BPM).
@@ -59,6 +71,8 @@ Sans syntaxe, tous les mots doivent apparaître (titre, artiste, genres, styles,
 | `dup:yes`, `played:yes`, `pl:no` | doublons, écoutés dans la session, dans aucune playlist |
 | `-mot`, `-genre:trance`, `"deux mots"` | exclusion, expression exacte |
 
+![Recherche avec syntaxe : bpm:118-130 rating:>=4 -genre:trance](docs/screenshots/search.png)
+
 **Playlists intelligentes** : « ＋ » › « Playlist intelligente » enregistre une recherche (✦ dans la liste). Son contenu se met à jour tout seul, parmi les titres chargés (dossier ouvert et titres des playlists). Clic droit › « Modifier la recherche… ». Elle s'exporte comme une playlist.
 
 ## Qualité des fichiers
@@ -71,6 +85,8 @@ En arrière-plan, après l'analyse (un passage ffmpeg sur des extraits, ~0,2 s p
 
 Une coupure à ~20 kHz sur un lossless n'est qu'une suspicion ; au-dessus de 20,5 kHz c'est un filtre de mastering (inaudible, non signalé), un MP3 320 kbps s'arrêtant vers 20 kHz. Recherche : `quality:bad`, `quality:issue`.
 
+![Recherche quality:issue : faux lossless, bitrates faibles, mono](docs/screenshots/quality.png)
+
 ## File d'attente
 
 - Ajouter : touche `q` sur la sélection, clic droit › « Ajouter à la file d'attente » (ou « Lire ensuite » pour passer en tête), ou glisser des lignes sur Vues › **File d'attente**.
@@ -82,9 +98,13 @@ Une coupure à ~20 kHz sur un lossless n'est qu'une suspicion ; au-dessus de 20,
 
 Vues › **Doublons** : les titres présents plusieurs fois (même artiste et titre, « original mix », « feat. », ponctuation et accents ignorés, et même durée à 2 s près), groupés, la meilleure version en premier et marquée ✓ (vrai lossless, puis bitrate, puis taille : un faux lossless passe derrière un bon MP3). Les remixes et edits ne sont pas des doublons. Rien n'est supprimé depuis l'app. Le badge ⧉ apparaît aussi dans la liste normale ; recherche `dup:yes`.
 
+![Vue Doublons : la meilleure copie en premier](docs/screenshots/duplicates.png)
+
 ## Historique
 
 Un titre écouté au moins 30 s (lecture réelle) s'affiche en vert pendant la session et entre dans l'historique (Vues › **Historique**, une entrée par lancement de l'app, dans l'ordre d'écoute). Clic droit sur une session : la convertir en playlist, l'exporter, la supprimer. Colonne « Écoutes » (masquée par défaut) : nombre d'écoutes au total. Clic droit sur un titre › « Marquer comme non écouté ».
+
+![Historique des sessions d’écoute](docs/screenshots/history.png)
 
 ## Playlists
 
@@ -97,6 +117,8 @@ Les playlists (en bas de la barre latérale) appartiennent à l'app, pas au doss
 - Export : clic droit sur une playlist (rekordbox XML ou M3U8), ou « Exporter » › « toutes les playlists » (un seul XML contenant toutes les playlists, ou un M3U8 par playlist).
 - Un ⚠ indique des fichiers introuvables (déplacés ou supprimés).
 - **Hors playlist** (touche `p`) : n'affiche que les titres du dossier qui ne sont encore dans aucune playlist, pratique pour trier une bibliothèque au fur et à mesure.
+
+![Une playlist ouverte, avec les playlists et une playlist intelligente dans la barre latérale](docs/screenshots/playlist.png)
 
 ## Copier vers une clé USB
 
