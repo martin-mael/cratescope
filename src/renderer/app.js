@@ -1461,7 +1461,6 @@ function applyLook(accent, title) {
   const a = isHex(accent) ? accent : DEFAULT_ACCENT;
   const root = document.documentElement.style;
   root.setProperty('--accent', a);
-  root.setProperty('--sel', `color-mix(in srgb, ${a} 28%, #0e0f12)`);
   const [r, g, b] = [1, 3, 5].map((i) => parseInt(a.slice(i, i + 2), 16) / 255);
   root.setProperty('--on-accent', 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.5 ? '#0b0d10' : '#ffffff'); // readable text on the accent
   const parts = (Array.isArray(title) && title.some((p) => p.text)) ? title : DEFAULT_TITLE;

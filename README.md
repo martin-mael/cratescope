@@ -52,7 +52,7 @@ Rien n'est écrit dans les fichiers audio : tout reste dans CrateScope et part d
 
 - **Note** : clic sur les étoiles (dans la liste ou le deck ; re-cliquer l'étoile active remet à 0), touches `0` à `5` sur la sélection, ou clic droit › Note. Exportée dans le champ Rating de rekordbox.
 - **Commentaire** : « ＋ commentaire » dans le deck, ou clic droit › « Modifier le commentaire… ». Exporté dans les commentaires rekordbox, après la tonalité Camelot.
-- **Titre / artiste / genre** : `F2` ou clic droit › « Modifier les infos… », aussi sur une sélection (un champ laissé vide n'est pas changé). Un genre corrigé remplace ceux des tags et en ligne. Les valeurs corrigées s'affichent en bleu ; « ↺ » ou clic droit › « Rétablir les infos du fichier » reviennent aux tags.
+- **Titre / artiste / genre** : `F2` ou clic droit › « Modifier les infos… », aussi sur une sélection (un champ laissé vide n'est pas changé). Un genre corrigé remplace ceux des tags et en ligne. Les valeurs corrigées s’affichent dans la couleur d’accent ; « ↺ » ou clic droit › « Rétablir les infos du fichier » reviennent aux tags.
 
 ## Recherche
 
@@ -145,7 +145,7 @@ La tonalité est exportée en notation classique (Am, F#m, Eb…) ; la notation 
 - **Grille** : le BPM est affiné par suivi des temps et régression sur tout le morceau (précision ~5 ms), le 1er temps des mesures est déduit des changements de section, les drops / breaks sont repérés (marqueurs DROP / BREAK, ligne jaune toutes les 16 mesures à partir du drop). Un avertissement s'affiche si le tempo varie (vinyle, live) ou si le 1er temps est incertain.
 - **Corriger la grille** (barre « Grille » du deck) : `⇤ 1` / `1 ⇥` décalent le 1er temps de la mesure d'un temps (`[` `]`), `‹` `›` décalent la grille de 5 ms (Alt : 1 ms, touches `,` `.`), « 1 ici » fait du temps le plus proche de la tête de lecture un 1er temps (`G`), « Caler ici » cale la grille exactement sur la tête de lecture (`⇧G`), « Auto » revient à la détection. « ♩ Clic » (`C`) joue un métronome sur la grille pour vérifier à l'oreille.
 - **BPM manuel** : clique sur le BPM du deck pour le saisir. La grille pivote autour du drop principal, là où elle compte le plus.
-- BPM à moitié ou doublé ? Boutons **÷2 / ×2** à côté du BPM dans le deck, touches `/` et `*` (sur la sélection), ou clic droit. La correction est gardée même après une ré-analyse ; le BPM corrigé s'affiche en bleu.
+- BPM à moitié ou doublé ? Boutons **÷2 / ×2** à côté du BPM dans le deck, touches `/` et `*` (sur la sélection), ou clic droit. La correction est gardée même après une ré-analyse ; le BPM corrigé s’affiche dans la couleur d’accent.
 - Un `*` à côté du BPM signale un désaccord avec le tag BPM du fichier.
 
 ## Apparence
